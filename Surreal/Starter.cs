@@ -19,6 +19,8 @@ namespace Surreal
             Console.WriteLine($"ω == ω : {w == w}");
             Console.WriteLine($"1/ω > 0 : {Surr.InverseOmega > 0}");
             Console.WriteLine($"1/ω < 1/4 : {Surr.InverseOmega < Surr.Dyadic(1, 2)}");
+            Console.WriteLine($"ω > 1/3 : {w > Surr.FromRational(1, 3)}");
+            Console.WriteLine($"ω > 1/ω : {w > Surr.InverseOmega}");
 
             Console.WriteLine();
             Console.WriteLine("=== Rational: 1/3 ===");
