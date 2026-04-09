@@ -7,7 +7,7 @@ namespace Surreal
     public sealed class Surr
     {
         #region Dyadic rational arithmetic (for simplification)
-        private readonly struct Dyad : IComparable<Dyad>, IEquatable<Dyad>
+        internal readonly struct Dyad : IComparable<Dyad>, IEquatable<Dyad>
         {
             public readonly long Num;
             public readonly int Exp; // value = Num / 2^Exp
@@ -106,40 +106,53 @@ namespace Surreal
         }
 
         private Dyad? _cachedValue;
+        private bool _evalAttempted;
+
+        /// <summary>Try to evaluate as a dyadic rational. Returns null for transfinite surreals.</summary>
+        internal static Dyad? TryEvaluate(Surr s)
+        {
+            if (s._cachedValue.HasValue) return s._cachedValue;
+            if (s._evalAttempted) return null; // already tried, was transfinite
+            s._evalAttempted = true;
+
+            if (s.leftInf != null || s.rightInf != null) return null;
+            if (s.IsZero) { s._cachedValue = new Dyad(0, 0); return s._cachedValue; }
+
+            var leftVals = new List<Dyad>();
+            foreach (var x in Safe(s.left))
+            {
+                var v = TryEvaluate(x);
+                if (v == null) return null;
+                leftVals.Add(v.Value);
+            }
+            var rightVals = new List<Dyad>();
+            foreach (var x in Safe(s.right))
+            {
+                var v = TryEvaluate(x);
+                if (v == null) return null;
+                rightVals.Add(v.Value);
+            }
+
+            Dyad? lo = leftVals.Count > 0 ? leftVals.Max() : null;
+            Dyad? hi = rightVals.Count > 0 ? rightVals.Min() : null;
+
+            s._cachedValue = SimplestBetween(lo, hi);
+            return s._cachedValue;
+        }
 
         private static Dyad Evaluate(Surr s)
-        {
-            if (s._cachedValue.HasValue) return s._cachedValue.Value;
-
-            Dyad result;
-            if (s.IsZero)
-            {
-                result = new Dyad(0, 0);
-            }
-            else
-            {
-                var leftVals = Safe(s.left).Select(Evaluate).ToList();
-                var rightVals = Safe(s.right).Select(Evaluate).ToList();
-
-                Dyad? lo = leftVals.Count > 0 ? leftVals.Max() : null;
-                Dyad? hi = rightVals.Count > 0 ? rightVals.Min() : null;
-
-                result = SimplestBetween(lo, hi);
-            }
-
-            s._cachedValue = result;
-            return result;
-        }
+            => TryEvaluate(s) ?? throw new InvalidOperationException("Cannot evaluate transfinite surreal as dyadic rational");
 
         public Surr Simplify()
         {
-            if (left == null || right == null) return this; // infinite surreals
-            var d = Evaluate(this);
-            return Dyadic(d.Num, d.Exp);
+            var d = TryEvaluate(this);
+            return d.HasValue ? Dyadic(d.Value.Num, d.Value.Exp) : this;
         }
         #endregion
 
         private readonly IReadOnlyCollection<Surr> left, right;
+        private readonly IInfiniteSet leftInf, rightInf;
+        private readonly string _displayName;
 
         private Surr(IEnumerable<Surr> left, IEnumerable<Surr> right) :
             this(left.ToList(), right.ToList())
@@ -152,63 +165,87 @@ namespace Surreal
             this.right = right;
         }
 
+        /// <summary>Construct a surreal with infinite and/or finite left/right sets.</summary>
+        public Surr(IInfiniteSet leftInf, IReadOnlyCollection<Surr> left,
+                    IInfiniteSet rightInf, IReadOnlyCollection<Surr> right,
+                    string displayName = null)
+        {
+            this.leftInf = leftInf;
+            this.rightInf = rightInf;
+            this.left = left ?? new List<Surr>();
+            this.right = right ?? new List<Surr>();
+            _displayName = displayName;
+        }
+
         public Surr(IReadOnlyCollection<Surr> left, IReadOnlyCollection<Surr> right)
         {
-            if (left is IInfinite)
+            var tempLeft = new List<Surr>();
+            foreach (var j in left)
             {
-                this.left = null;
+                if (!tempLeft.Any(x => x == j) && tempLeft.All(i => j >= i))
+                    tempLeft.Add(j);
             }
-            else
-            {
-                var tempLeft = new List<Surr>();
-                foreach (var j in left)
-                {
-                    if (!tempLeft.Any(x => x == j) && tempLeft.All(i => j >= i))
-                        tempLeft.Add(j);
-                }
-                this.left = tempLeft;
-            }
+            this.left = tempLeft;
 
-            if (right is IInfinite)
+            var tempRight = new List<Surr>();
+            foreach (var j in right)
             {
-                this.right = null;
+                if (!tempRight.Any(x => x == j) && tempRight.All(i => j <= i))
+                    tempRight.Add(j);
             }
-            else
-            {
-                var tempRight = new List<Surr>();
-                foreach (var j in right)
-                {
-                    if (!tempRight.Any(x => x == j) && tempRight.All(i => j <= i))
-                        tempRight.Add(j);
-                }
-                this.right = tempRight;
-            }
+            this.right = tempRight;
         }
+
+        private static readonly Dictionary<long, Surr> IntCache = new();
 
         public Surr(long n)
         {
-            if (n == 0)
+            var s = GetInt(n);
+            left = s.left; right = s.right;
+            _cachedValue = s._cachedValue; _evalAttempted = true;
+        }
+
+        private static Surr GetInt(long n)
+        {
+            if (IntCache.TryGetValue(n, out var cached)) return cached;
+
+            // Build iteratively from 0 toward n
+            if (!IntCache.ContainsKey(0))
             {
-                left = new List<Surr>();
-                right = new List<Surr>();
+                var zero = new Surr(new List<Surr>(), new List<Surr>(), raw: true);
+                zero._cachedValue = new Dyad(0, 0); zero._evalAttempted = true;
+                IntCache[0] = zero;
             }
-            else if (n > 0)
+
+            if (n > 0)
             {
-                left = new List<Surr> { new Surr(n - 1) };
-                right = new List<Surr>();
+                for (long i = 1; i <= n; i++)
+                {
+                    if (IntCache.ContainsKey(i)) continue;
+                    var s = new Surr(new List<Surr> { IntCache[i - 1] }, new List<Surr>(), raw: true);
+                    s._cachedValue = new Dyad(i, 0); s._evalAttempted = true;
+                    IntCache[i] = s;
+                }
             }
             else
             {
-                left = new List<Surr>();
-                right = new List<Surr> { new Surr(n + 1) };
+                for (long i = -1; i >= n; i--)
+                {
+                    if (IntCache.ContainsKey(i)) continue;
+                    var s = new Surr(new List<Surr>(), new List<Surr> { IntCache[i + 1] }, raw: true);
+                    s._cachedValue = new Dyad(i, 0); s._evalAttempted = true;
+                    IntCache[i] = s;
+                }
             }
+
+            return IntCache[n];
         }
 
         public bool IsNumeric => !Safe(left).Any(x => Safe(right).Any(y => y <= x));
 
         private bool IsZero => left is { Count: 0 } && right is { Count: 0 };
 
-        private bool IsFinite => left != null && right != null;
+        private bool IsFinite => leftInf == null && rightInf == null;
 
         /// <summary>Creates the surreal number n / 2^k (a dyadic fraction).</summary>
         public static Surr Dyadic(long n, int k)
@@ -225,13 +262,25 @@ namespace Surreal
         }
 
         public static readonly Surr Half = Dyadic(1, 1);
+        public static readonly Surr Zero = new Surr(0L);
+
+        /// <summary>ω = {0, 1, 2, 3, ... | }</summary>
+        public static readonly Surr Omega = new(
+            NaturalNumbers.Instance, null,
+            null, null,
+            "ω");
+
+        /// <summary>1/ω = {0 | 1, 1/2, 1/4, 1/8, ...} — a positive infinitesimal</summary>
+        public static readonly Surr InverseOmega = new(
+            null, new List<Surr> { Zero },
+            PositivePowersOfHalf.Instance, null,
+            "1/ω");
 
         #region ToString
         public const int DefaultFrom = -8;
         public const int DefaultLength = 17;
         public static readonly Surr[] Defaults =
             Enumerable.Range(DefaultFrom, DefaultLength).Select(n => new Surr(n)).ToArray();
-        public static readonly Surr Zero = new Surr(0L);
 
         // Well-known dyadic fractions for display
         private static readonly (Surr value, string name)[] KnownFractions = {
@@ -250,25 +299,19 @@ namespace Surreal
 
         public override string ToString()
         {
-            if (left == null && right == null)
-                return "[ null | null ]";
-            if (left == null)
-                return "[ null | " + PrintSide(right) + " ]";
-            if (right == null)
-                return "[ " + PrintSide(left) + " | null ]";
+            if (_displayName != null) return _displayName;
 
-            if (IsFinite)
+            var val = TryEvaluate(this);
+            if (val.HasValue)
             {
-                var d = Evaluate(this);
+                var d = val.Value;
                 if (d.Exp == 0) return $"{d.Num}";
-                if (d.Exp > 0)
-                {
-                    long den = 1L << d.Exp;
-                    return $"{d.Num}/{den}";
-                }
+                if (d.Exp > 0) return $"{d.Num}/{1L << d.Exp}";
             }
 
-            return "[ " + PrintSide(left) + "| " + PrintSide(right) + "]";
+            string lStr = leftInf != null ? leftInf.DisplayName : PrintSide(left).TrimEnd();
+            string rStr = rightInf != null ? rightInf.DisplayName : PrintSide(right).TrimEnd();
+            return $"{{ {lStr} | {rStr} }}";
         }
         #endregion
 
@@ -339,13 +382,26 @@ namespace Surreal
 
         #region basic operators
         private static IEnumerable<Surr> Safe(IReadOnlyCollection<Surr> side)
-            => side ?? Enumerable.Empty<Surr>();
+            => side ?? Array.Empty<Surr>();
 
         public static bool operator <=(Surr a, Surr b)
         {
-            if (a.IsFinite && b.IsFinite)
-                return Evaluate(a).CompareTo(Evaluate(b)) <= 0;
-            return !(Safe(a.left).Any(x => b <= x) || Safe(b.right).Any(x => x <= a));
+            // Fast path: both fully finite numeric surreals
+            var aVal = TryEvaluate(a);
+            var bVal = TryEvaluate(b);
+            if (aVal.HasValue && bVal.HasValue)
+                return aVal.Value.CompareTo(bVal.Value) <= 0;
+
+            // a <= b iff !(exists x in a.left: b <= x) && !(exists y in b.right: y <= a)
+            bool leftHasGe = (a.leftInf != null && a.leftInf.HasElementGreaterOrEqual(b))
+                          || Safe(a.left).Any(x => b <= x);
+
+            if (leftHasGe) return false;
+
+            bool rightHasLe = (b.rightInf != null && b.rightInf.HasElementLessOrEqual(a))
+                           || Safe(b.right).Any(x => x <= a);
+
+            return !rightHasLe;
         }
 
         public static bool operator >=(Surr a, Surr b)
