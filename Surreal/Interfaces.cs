@@ -1,74 +1,108 @@
+using System.Collections.Generic;
+using System.Linq;
+
 namespace Surreal
 {
-    /// <summary>
-    /// Represents an infinite set of surreal numbers used as left or right options.
-    /// Implementations must answer comparison queries symbolically.
-    /// </summary>
     public interface IInfiniteSet
     {
-        /// <summary>Does this set contain any element x such that x >= target?</summary>
         bool HasElementGreaterOrEqual(Surr target);
-
-        /// <summary>Does this set contain any element x such that x <= target?</summary>
         bool HasElementLessOrEqual(Surr target);
-
         string DisplayName { get; }
     }
 
-    /// <summary>The set {0, 1, 2, 3, ...} of all non-negative integers.</summary>
     public sealed class NaturalNumbers : IInfiniteSet
     {
         public static readonly NaturalNumbers Instance = new();
-
         public string DisplayName => "0,1,2,3,...";
 
         public bool HasElementGreaterOrEqual(Surr target)
         {
-            // "Exists n ∈ ℕ such that n >= target?"
-            // True if target is a finite number (some large enough n will exceed it).
-            // False if target is transfinite (no finite n reaches ω or beyond).
-            var val = Surr.TryEvaluate(target);
-            return val.HasValue;
+            // Some natural n >= target iff target is finite (not transfinite)
+            return Surr.TryEvaluate(target).HasValue;
         }
 
         public bool HasElementLessOrEqual(Surr target)
         {
-            // "Exists n ∈ ℕ such that n <= target?"
-            // True if target >= 0 (since 0 ∈ ℕ).
-            // Also true if target is transfinite (0 <= ω).
+            // 0 is in the set, so true iff target >= 0
             var val = Surr.TryEvaluate(target);
             if (val.HasValue)
                 return val.Value.CompareTo(new Surr.Dyad(0, 0)) >= 0;
-            // Target is transfinite — 0 is in our set and 0 <= any transfinite
-            return true;
+            return true; // 0 <= any transfinite
         }
     }
 
-    /// <summary>The set {1, 1/2, 1/4, 1/8, ...} of positive powers of 1/2.</summary>
     public sealed class PositivePowersOfHalf : IInfiniteSet
     {
         public static readonly PositivePowersOfHalf Instance = new();
-
-        public string DisplayName => "1,1/2,1/4,1/8,...";
+        public string DisplayName => "1,1/2,1/4,...";
 
         public bool HasElementGreaterOrEqual(Surr target)
         {
-            // Largest element is 1. So true iff target <= 1.
             var val = Surr.TryEvaluate(target);
             if (val.HasValue)
                 return val.Value.CompareTo(new Surr.Dyad(1, 0)) <= 0;
-            // Target is transfinite — no 1/2^n reaches it
             return false;
         }
 
         public bool HasElementLessOrEqual(Surr target)
         {
-            // Elements approach 0 from above. True iff target > 0 (some small enough 1/2^n <= target).
-            // Also true for any transfinite target.
             var val = Surr.TryEvaluate(target);
             if (val.HasValue)
                 return val.Value.CompareTo(new Surr.Dyad(0, 0)) > 0;
             return true;
+        }
+    }
+
+    /// <summary>
+    /// Pre-generated list of dyadic approximations approaching a value from below.
+    /// Comparison queries use surreal <= on the stored dyadics (no rational arithmetic at runtime).
+    /// </summary>
+    public sealed class DyadicApproxBelow : IInfiniteSet
+    {
+        private readonly List<Surr> _approxs;
+        public string DisplayName { get; }
+
+        public DyadicApproxBelow(List<Surr> approxs, string displayName)
+        {
+            _approxs = approxs;
+            DisplayName = displayName;
+        }
+
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            // "Exists element in set >= target?" — check all approximations via surreal <=
+            return _approxs.Any(a => target <= a);
+        }
+
+        public bool HasElementLessOrEqual(Surr target)
+        {
+            return _approxs.Any(a => a <= target);
+        }
+    }
+
+    /// <summary>
+    /// Pre-generated list of dyadic approximations approaching a value from above.
+    /// Comparison queries use surreal <= on the stored dyadics (no rational arithmetic at runtime).
+    /// </summary>
+    public sealed class DyadicApproxAbove : IInfiniteSet
+    {
+        private readonly List<Surr> _approxs;
+        public string DisplayName { get; }
+
+        public DyadicApproxAbove(List<Surr> approxs, string displayName)
+        {
+            _approxs = approxs;
+            DisplayName = displayName;
+        }
+
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            return _approxs.Any(a => target <= a);
+        }
+
+        public bool HasElementLessOrEqual(Surr target)
+        {
+            return _approxs.Any(a => a <= target);
         }
     }
 }

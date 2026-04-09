@@ -276,6 +276,86 @@ namespace Surreal
             PositivePowersOfHalf.Instance, null,
             "1/ω");
 
+        /// <summary>
+        /// Create a surreal number from rational p/q.
+        /// If p/q is a dyadic rational, returns the standard Dyadic form.
+        /// Otherwise, pre-generates dyadic approximations from both sides.
+        /// </summary>
+        public static Surr FromRational(long p, long q, int depth = 10)
+        {
+            if (q <= 0) throw new ArgumentException("denominator must be positive");
+            long g = Gcd(Math.Abs(p), q);
+            p /= g; q /= g;
+            // Check if it's a dyadic rational (q is a power of 2)
+            if ((q & (q - 1)) == 0)
+            {
+                int exp = 0;
+                long tmp = q;
+                while (tmp > 1) { tmp >>= 1; exp++; }
+                return Dyadic(p, exp);
+            }
+            var (lower, upper) = GenerateApproximations(p, q, depth);
+            string name = q == 1 ? $"{p}" : $"{p}/{q}";
+            return new Surr(
+                new DyadicApproxBelow(lower, $"↗{name}"),
+                null,
+                new DyadicApproxAbove(upper, $"↘{name}"),
+                null,
+                name);
+        }
+
+        /// <summary>
+        /// Binary search to find dyadic approximations of p/q from both sides.
+        /// Uses integer arithmetic only during construction (to determine which
+        /// side each midpoint falls on). All runtime comparisons are surreal.
+        /// </summary>
+        private static (List<Surr> lower, List<Surr> upper) GenerateApproximations(long p, long q, int depth)
+        {
+            long intPart = p >= 0 ? p / q : (p / q - 1); // floor
+            // Ensure intPart is actually floor
+            if (intPart * q > p) intPart--;
+
+            var lower = new List<Surr> { GetInt(intPart) };
+            var upper = new List<Surr> { GetInt(intPart + 1) };
+
+            // Track interval as lo_num/2^exp .. hi_num/2^exp where hi_num = lo_num + 1
+            long lo_num = intPart;
+            long hi_num = intPart + 1;
+            int exp = 0;
+
+            for (int i = 0; i < depth; i++)
+            {
+                exp++;
+                lo_num *= 2;
+                hi_num *= 2;
+                long mid_num = lo_num + 1; // midpoint numerator at denominator 2^exp
+
+                // Is p/q < mid_num/2^exp?  i.e. p * 2^exp < mid_num * q
+                bool pqLessThanMid = p * (1L << exp) < mid_num * q;
+
+                var midSurr = Dyadic(mid_num, exp);
+
+                if (pqLessThanMid)
+                {
+                    upper.Add(midSurr);
+                    hi_num = mid_num;
+                }
+                else
+                {
+                    lower.Add(midSurr);
+                    lo_num = mid_num;
+                }
+            }
+
+            return (lower, upper);
+        }
+
+        private static long Gcd(long a, long b)
+        {
+            while (b != 0) { (a, b) = (b, a % b); }
+            return a;
+        }
+
         #region ToString
         public const int DefaultFrom = -8;
         public const int DefaultLength = 17;

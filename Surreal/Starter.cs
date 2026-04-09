@@ -7,51 +7,49 @@ namespace Surreal
         static void Main(string[] args)
         {
             Console.WriteLine("=== Basic arithmetic ===");
-            foreach (var x in new[] { new Surr(0), new Surr(1), new Surr(2), new Surr(-3) })
-                Console.WriteLine($"{x}: neg={-x}, +1={x + 1}, -1={x - 1}, double={x + x}");
-
-            Console.WriteLine();
-            Console.WriteLine("=== Fractions ===");
-            var half = Surr.Half;
-            var quarter = Surr.Dyadic(1, 2);
-            Console.WriteLine($"1/2 + 1/2 = {half + half}");
-            Console.WriteLine($"1/2 * 1/2 = {half * half}");
-            Console.WriteLine($"1/4 * 4 = {quarter * 4}");
+            Console.WriteLine($"1/2 * 1/2 = {Surr.Half * Surr.Half}");
+            Console.WriteLine($"1/4 * 4 = {Surr.Dyadic(1, 2) * 4}");
             Console.WriteLine($"4 * 4 = {new Surr(4) * new Surr(4)}");
             Console.WriteLine($"3 * 3 * 3 = {new Surr(3) * new Surr(3) * new Surr(3)}");
 
             Console.WriteLine();
-            Console.WriteLine("=== Transfinite: ω ===");
+            Console.WriteLine("=== Transfinite ===");
             var w = Surr.Omega;
-            Console.WriteLine($"ω = {w}");
-            Console.WriteLine($"ω > 0 : {w > 0}");
-            Console.WriteLine($"ω > 100 : {w > 100}");
             Console.WriteLine($"ω > 1000000 : {w > 1000000}");
             Console.WriteLine($"ω == ω : {w == w}");
-            Console.WriteLine($"ω >= ω : {w >= w}");
-            Console.WriteLine($"ω > ω : {w > w}");
-
-            // ω + 1 = {ω | }
-            var w1 = new Surr(null, new[] { w }, null, null, "ω+1");
-            Console.WriteLine($"ω+1 = {w1}");
-            Console.WriteLine($"ω+1 > ω : {w1 > w}");
-            Console.WriteLine($"ω > ω+1 : {w > w1}");
-            Console.WriteLine($"ω+1 > 100 : {w1 > 100}");
-
-            // ω - 1 = {0,1,2,... | ω}
-            var wm1 = new Surr(NaturalNumbers.Instance, null, null, new[] { w }, "ω-1");
-            Console.WriteLine($"ω-1 = {wm1}");
-            Console.WriteLine($"ω-1 < ω : {wm1 < w}");
-            Console.WriteLine($"ω-1 > 100 : {wm1 > 100}");
+            Console.WriteLine($"1/ω > 0 : {Surr.InverseOmega > 0}");
+            Console.WriteLine($"1/ω < 1/4 : {Surr.InverseOmega < Surr.Dyadic(1, 2)}");
 
             Console.WriteLine();
-            Console.WriteLine("=== Infinitesimal: 1/ω ===");
-            var eps = Surr.InverseOmega;
-            Console.WriteLine($"1/ω = {eps}");
-            Console.WriteLine($"1/ω > 0 : {eps > 0}");
-            Console.WriteLine($"1/ω < 1 : {eps < 1}");
-            Console.WriteLine($"1/ω < 1/2 : {eps < half}");
-            Console.WriteLine($"1/ω < 1/4 : {eps < quarter}");
+            Console.WriteLine("=== Rational: 1/3 ===");
+            var third = Surr.FromRational(1, 3);
+            Console.WriteLine($"1/3 = {third}");
+            Console.WriteLine($"1/3 > 0 : {third > 0}");
+            Console.WriteLine($"1/3 < 1 : {third < 1}");
+            Console.WriteLine($"1/3 < 1/2 : {third < Surr.Half}");
+            Console.WriteLine($"1/3 > 1/4 : {third > Surr.Dyadic(1, 2)}");
+            Console.WriteLine($"1/3 == 1/3 : {third == Surr.FromRational(1, 3)}");
+
+            var twoThirds = Surr.FromRational(2, 3);
+            Console.WriteLine($"2/3 = {twoThirds}");
+            Console.WriteLine($"1/3 < 2/3 : {third < twoThirds}");
+            Console.WriteLine($"2/3 < 1 : {twoThirds < 1}");
+
+            Console.WriteLine();
+            Console.WriteLine("=== Other rationals ===");
+            var fifth = Surr.FromRational(1, 5);
+            Console.WriteLine($"1/5 = {fifth}");
+            Console.WriteLine($"1/5 < 1/3 : {fifth < third}");
+            Console.WriteLine($"1/5 > 0 : {fifth > 0}");
+
+            var threeSevenths = Surr.FromRational(3, 7);
+            Console.WriteLine($"3/7 = {threeSevenths}");
+            Console.WriteLine($"3/7 > 1/3 : {threeSevenths > third}");
+            Console.WriteLine($"3/7 < 1/2 : {threeSevenths < Surr.Half}");
+
+            // Dyadic should pass through
+            Console.WriteLine($"FromRational(3, 4) = {Surr.FromRational(3, 4)}");
+            Console.WriteLine($"FromRational(1, 2) = {Surr.FromRational(1, 2)}");
         }
     }
 }
