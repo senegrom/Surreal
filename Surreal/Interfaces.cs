@@ -1,0 +1,6 @@
+﻿namespace Surreal
+{
+    interface IInfinite
+    {
+    }
+}
