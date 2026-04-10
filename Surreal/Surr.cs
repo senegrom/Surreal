@@ -7,7 +7,9 @@ namespace Surreal
     public sealed partial class Surr
     {
         private readonly IReadOnlyCollection<Surr> left, right;
-        private readonly IInfiniteSet leftInf, rightInf;
+        internal readonly IInfiniteSet leftInf, rightInf;
+        internal IInfiniteSet LeftInf => leftInf;
+        internal IInfiniteSet RightInf => rightInf;
         private readonly string _displayName;
 
         private Dyad? _cachedValue;

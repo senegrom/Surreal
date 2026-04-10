@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Surreal
 {
@@ -18,16 +16,9 @@ namespace Surreal
 
         public bool HasElementGreaterOrEqual(Surr target)
         {
-            // Some n >= target iff target is not transfinite (not ω or beyond).
-            // Works for dyadics, rationals like 1/3, and any finite real.
-            // We test: is 0 >= target? is 1 >= target? Only need to check small n.
-            // If target <= some small n, we're done. For efficiency, check up to a bound.
             var val = Surr.TryEvaluate(target);
-            if (val.HasValue) return true; // any finite dyadic — some n works
-
-            // Target is non-dyadic (e.g., 1/3) or transfinite (ω).
-            // Check: is target <= 0? <= 1? ... <= 1000?
-            // For 1/3: target <= 1 is true. For ω: target <= n is always false.
+            if (val.HasValue) return true;
+            // Non-dyadic or transfinite. Check small integers via surreal <=.
             for (int n = 0; n <= 100; n++)
                 if (target <= n) return true;
             return false;
@@ -35,8 +26,7 @@ namespace Surreal
 
         public bool HasElementLessOrEqual(Surr target)
         {
-            // 0 is in the set. True iff 0 <= target.
-            return new Surr(0) <= target;
+            return Surr.Zero <= target;
         }
     }
 
@@ -47,14 +37,11 @@ namespace Surreal
 
         public bool HasElementGreaterOrEqual(Surr target)
         {
-            // Largest element is 1. True iff target <= 1.
             return target <= new Surr(1);
         }
 
         public bool HasElementLessOrEqual(Surr target)
         {
-            // Elements approach 0+. True iff target > 0 (some 1/2^n is small enough).
-            // Check: is 1 <= target? 1/2 <= target? 1/4 <= target? ...
             for (int k = 0; k <= 50; k++)
                 if (Surr.Dyadic(1, k) <= target) return true;
             return false;
@@ -62,24 +49,25 @@ namespace Surreal
     }
 
     /// <summary>
-    /// Lazy generator for dyadic approximations of a rational p/q.
-    /// Generates lower and upper approximations on demand via binary search.
-    /// Integer arithmetic is used only during generation (to determine which
-    /// side each midpoint falls on). All comparison queries use surreal <=.
+    /// Lazy generator for dyadic approximations of a rational p/q via binary search.
+    /// The generating RULE is the binary search process itself. The (P, Q) parameters
+    /// identify the rule — two generators with the same (P, Q) converge to the same value.
+    /// Integer arithmetic is used only during generation. All comparisons use surreal <=.
     /// </summary>
     public sealed class LazyDyadicApprox
     {
-        private readonly long _p, _q;
+        /// <summary>The generating rule identity (reduced fraction).</summary>
+        public readonly long P, Q;
+
         private long _loNum, _hiNum;
         private int _exp;
-        private readonly int _maxDepth;
 
         public readonly List<Surr> Lower = new();
         public readonly List<Surr> Upper = new();
 
-        public LazyDyadicApprox(long p, long q, int maxDepth = 15)
+        public LazyDyadicApprox(long p, long q)
         {
-            _p = p; _q = q; _maxDepth = maxDepth;
+            P = p; Q = q;
 
             long intPart = p >= 0 ? p / q : (p / q - 1);
             if (intPart * q > p) intPart--;
@@ -92,23 +80,17 @@ namespace Surreal
             Upper.Add(Surr.GetInt(intPart + 1));
         }
 
-        /// <summary>Generate approximations until we have at least 'count' on each side, or hit maxDepth.</summary>
-        public void EnsureTotal(int count)
-        {
-            while ((Lower.Count < count || Upper.Count < count) && _exp < _maxDepth)
-                GenerateNext();
-        }
+        /// <summary>Whether two generators have the same rule (converge to the same value).</summary>
+        public bool SameRule(LazyDyadicApprox other) => P == other.P && Q == other.Q;
 
-        private void GenerateNext()
+        public void GenerateNext()
         {
-            if (_exp >= _maxDepth) return;
             _exp++;
             _loNum *= 2;
             _hiNum *= 2;
             long midNum = _loNum + 1;
 
-            // p/q < midNum/2^exp ?  ↔  p * 2^exp < midNum * q
-            bool pqLessThanMid = _p * (1L << _exp) < midNum * _q;
+            bool pqLessThanMid = P * (1L << _exp) < midNum * Q;
             var midSurr = Surr.Dyadic(midNum, _exp);
 
             if (pqLessThanMid)
@@ -123,109 +105,131 @@ namespace Surreal
             }
         }
 
-        public bool CanGenerateMore => _exp < _maxDepth;
+        /// <summary>
+        /// Compare two generators' target values by interleaving approximations.
+        /// Returns negative if this &lt; other, positive if this &gt; other.
+        /// Terminates for distinct values. Must check SameRule first for equal values.
+        /// </summary>
+        public int InterleaveCompare(LazyDyadicApprox other)
+        {
+            while (true)
+            {
+                GenerateNext();
+                other.GenerateNext();
+
+                // Our upper bound vs their lower bound (surreal <= on dyadics → fast)
+                if (Upper[^1] <= other.Lower[^1]) return -1; // we < them
+                if (other.Upper[^1] <= Lower[^1]) return 1;  // we > them
+            }
+        }
     }
 
-    /// <summary>Lower dyadic approximations of p/q (all elements < p/q, approaching from below).</summary>
+    /// <summary>
+    /// Helper to extract a LazyDyadicApprox generator from a surreal, if it has one.
+    /// </summary>
+    internal static class GeneratorHelper
+    {
+        internal static LazyDyadicApprox GetGenerator(Surr target)
+        {
+            // A surreal from FromRational has DyadicApproxBelow as leftInf
+            return (target.LeftInf as DyadicApproxBelow)?.Gen
+                ?? (target.RightInf as DyadicApproxAbove)?.Gen;
+        }
+    }
+
+    /// <summary>Lower dyadic approximations (all elements &lt; p/q, approaching from below).</summary>
     public sealed class DyadicApproxBelow : IInfiniteSet
     {
-        private readonly LazyDyadicApprox _gen;
+        internal readonly LazyDyadicApprox Gen;
         public string DisplayName { get; }
 
         public DyadicApproxBelow(LazyDyadicApprox gen, string displayName)
         {
-            _gen = gen;
+            Gen = gen;
             DisplayName = displayName;
         }
 
         public bool HasElementGreaterOrEqual(Surr target)
         {
-            // Check already-generated approximations
-            for (int i = 0; i < _gen.Lower.Count; i++)
-                if (target <= _gen.Lower[i]) return true;
+            // "Exists d < ourValue where d >= target?"
 
-            // Generate more on demand
-            while (_gen.CanGenerateMore)
+            // Case 1: target has same generating rule → no (all d < ourValue, target IS ourValue)
+            var targetGen = GeneratorHelper.GetGenerator(target);
+            if (targetGen != null)
             {
-                int prevCount = _gen.Lower.Count;
-                _gen.EnsureTotal(_gen.Lower.Count + 1);
-                // Check any newly added lower approximation
-                for (int i = prevCount; i < _gen.Lower.Count; i++)
-                    if (target <= _gen.Lower[i]) return true;
-
-                // Stopping: if target >= latest upper bound, no lower approx can reach it
-                if (_gen.Upper.Count > 0 && _gen.Upper[^1] <= target)
-                    return false;
+                if (Gen.SameRule(targetGen)) return false;
+                // Case 2: different rule → true iff ourValue > targetValue
+                return Gen.InterleaveCompare(targetGen) > 0;
             }
-            return false;
+
+            // Case 3: target is dyadic or other — lazy generate and check via surreal <=
+            for (int i = 0; i < Gen.Lower.Count; i++)
+                if (target <= Gen.Lower[i]) return true;
+
+            while (true)
+            {
+                int prev = Gen.Lower.Count;
+                Gen.GenerateNext();
+                for (int i = prev; i < Gen.Lower.Count; i++)
+                    if (target <= Gen.Lower[i]) return true;
+                // Stopping: upper bound dropped to or below target
+                if (Gen.Upper[^1] <= target) return false;
+            }
         }
 
         public bool HasElementLessOrEqual(Surr target)
         {
-            // First element (floor) is always small. Check it.
-            if (_gen.Lower.Count > 0 && _gen.Lower[0] <= target) return true;
-
-            for (int i = 1; i < _gen.Lower.Count; i++)
-                if (_gen.Lower[i] <= target) return true;
-
-            while (_gen.CanGenerateMore)
-            {
-                int prevCount = _gen.Lower.Count;
-                _gen.EnsureTotal(_gen.Lower.Count + 1);
-                for (int i = prevCount; i < _gen.Lower.Count; i++)
-                    if (_gen.Lower[i] <= target) return true;
-            }
-            return false;
+            // "Exists d < ourValue where d <= target?"
+            // The first element (floor) is small. Almost always true.
+            return Gen.Lower[0] <= target;
         }
     }
 
-    /// <summary>Upper dyadic approximations of p/q (all elements > p/q, approaching from above).</summary>
+    /// <summary>Upper dyadic approximations (all elements &gt; p/q, approaching from above).</summary>
     public sealed class DyadicApproxAbove : IInfiniteSet
     {
-        private readonly LazyDyadicApprox _gen;
+        internal readonly LazyDyadicApprox Gen;
         public string DisplayName { get; }
 
         public DyadicApproxAbove(LazyDyadicApprox gen, string displayName)
         {
-            _gen = gen;
+            Gen = gen;
             DisplayName = displayName;
         }
 
         public bool HasElementGreaterOrEqual(Surr target)
         {
-            // First element (ceil) is always large. Check it.
-            if (_gen.Upper.Count > 0 && target <= _gen.Upper[0]) return true;
-
-            for (int i = 1; i < _gen.Upper.Count; i++)
-                if (target <= _gen.Upper[i]) return true;
-
-            while (_gen.CanGenerateMore)
-            {
-                int prevCount = _gen.Upper.Count;
-                _gen.EnsureTotal(_gen.Upper.Count + 1);
-                for (int i = prevCount; i < _gen.Upper.Count; i++)
-                    if (target <= _gen.Upper[i]) return true;
-            }
-            return false;
+            // "Exists d > ourValue where d >= target?"
+            // The first element (ceil) is large. Almost always true.
+            return target <= Gen.Upper[0];
         }
 
         public bool HasElementLessOrEqual(Surr target)
         {
-            for (int i = 0; i < _gen.Upper.Count; i++)
-                if (_gen.Upper[i] <= target) return true;
+            // "Exists d > ourValue where d <= target?"
 
-            while (_gen.CanGenerateMore)
+            // Case 1: same rule → no (all d > ourValue, target IS ourValue)
+            var targetGen = GeneratorHelper.GetGenerator(target);
+            if (targetGen != null)
             {
-                int prevCount = _gen.Upper.Count;
-                _gen.EnsureTotal(_gen.Upper.Count + 1);
-                for (int i = prevCount; i < _gen.Upper.Count; i++)
-                    if (_gen.Upper[i] <= target) return true;
-
-                // Stopping: if latest lower bound >= target, no upper approx is <= target
-                if (_gen.Lower.Count > 0 && target <= _gen.Lower[^1])
-                    return false;
+                if (Gen.SameRule(targetGen)) return false;
+                // Case 2: different rule → true iff ourValue < targetValue
+                return Gen.InterleaveCompare(targetGen) < 0;
             }
-            return false;
+
+            // Case 3: lazy generate and check via surreal <=
+            for (int i = 0; i < Gen.Upper.Count; i++)
+                if (Gen.Upper[i] <= target) return true;
+
+            while (true)
+            {
+                int prev = Gen.Upper.Count;
+                Gen.GenerateNext();
+                for (int i = prev; i < Gen.Upper.Count; i++)
+                    if (Gen.Upper[i] <= target) return true;
+                // Stopping: lower bound rose to or above target
+                if (target <= Gen.Lower[^1]) return false;
+            }
         }
     }
 }
