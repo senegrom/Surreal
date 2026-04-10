@@ -48,6 +48,35 @@ namespace Surreal
         }
     }
 
+    /// <summary>The set {0+p/q, 1+p/q, 2+p/q, ...} for a rational offset p/q.</summary>
+    public sealed class ShiftedNaturals : IInfiniteSet
+    {
+        private readonly long _p, _q;
+        public string DisplayName => $"0+{_p}/{_q},1+{_p}/{_q},...";
+
+        public ShiftedNaturals(long p, long q) { _p = p; _q = q; }
+
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            // {n + p/q} for n=0,1,2,... Some n+p/q >= target iff target is finite.
+            // For finite target: some large n works.
+            var val = Surr.TryEvaluate(target);
+            if (val.HasValue) return true;
+            var gen = GeneratorHelper.GetGenerator(target);
+            if (gen != null) return true; // target is a finite rational
+            // Transfinite: check small values via surreal <=
+            for (int n = 0; n <= 10; n++)
+                if (target <= new Surr(n) + Surr.FromRational(_p, _q)) return true;
+            return false;
+        }
+
+        public bool HasElementLessOrEqual(Surr target)
+        {
+            // Smallest element is 0 + p/q = p/q. True iff p/q <= target.
+            return Surr.FromRational(_p, _q) <= target;
+        }
+    }
+
     /// <summary>
     /// Lazy generator for dyadic approximations of a rational p/q via binary search.
     /// The generating RULE is the binary search process itself. The (P, Q) parameters

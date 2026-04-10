@@ -49,9 +49,12 @@ namespace Surreal
             Console.WriteLine($"3/7 > 1/3 : {threeSevenths > third}");
             Console.WriteLine($"3/7 < 1/2 : {threeSevenths < Surr.Half}");
 
-            // Dyadic should pass through
-            Console.WriteLine($"FromRational(3, 4) = {Surr.FromRational(3, 4)}");
-            Console.WriteLine($"FromRational(1, 2) = {Surr.FromRational(1, 2)}");
+            Console.WriteLine();
+            Console.WriteLine("=== Mixed: rationals + transfinite ===");
+            var eps = Surr.InverseOmega;
+            Console.WriteLine($"1/5 > 1/ω : {fifth > eps}");
+            Console.WriteLine($"1 + 1/5 > 1 + 1/ω : {(new Surr(1) + fifth) > (new Surr(1) + eps)}");
+            Console.WriteLine($"ω + 1/5 > ω : {(w + fifth) > w}");
         }
     }
 }

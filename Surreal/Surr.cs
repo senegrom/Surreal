@@ -103,7 +103,8 @@ namespace Surreal
 
         public bool IsNumeric => !Safe(left).Any(x => Safe(right).Any(y => y <= x));
 
-        private bool IsZero => left is { Count: 0 } && right is { Count: 0 };
+        private bool IsZero => leftInf == null && rightInf == null
+                            && left is { Count: 0 } && right is { Count: 0 };
 
         private bool IsFinite => leftInf == null && rightInf == null;
 

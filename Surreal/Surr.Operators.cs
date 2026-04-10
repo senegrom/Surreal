@@ -61,6 +61,7 @@ namespace Surreal
             if (a.IsZero) return b;
             if (b.IsZero) return a;
 
+            // Fast path: both finite dyadics
             if (a.IsFinite && b.IsFinite)
             {
                 var key = (Evaluate(a), Evaluate(b));
@@ -78,11 +79,55 @@ namespace Surreal
                 return result;
             }
 
-            var l1 = Safe(b.left).Select(y => a + y);
-            var l2 = Safe(a.left).Select(x => b + x);
-            var r1 = Safe(b.right).Select(y => a + y);
-            var r2 = Safe(a.right).Select(x => b + x);
-            return new Surr(l1.Concat(l2), r1.Concat(r2));
+            // Rational path: if both have known rational/dyadic values, sum the rationals.
+            // This constructs the result via FromRational (lazy generators, surreal comparison).
+            // The integer arithmetic here is construction-time only (same as FromRational's generator).
+            var sumRational = TryRationalSum(a, b);
+            if (sumRational is not null) return sumRational;
+
+            // Transfinite path: construct surreal with shifted infinite sets
+            return TransfiniteAdd(a, b);
+        }
+
+        private static Surr TryRationalSum(Surr a, Surr b)
+        {
+            // Extract (p, q) for each: dyadics as (Num * 2^0, 2^Exp) and generators as (P, Q)
+            if (!TryGetRationalPQ(a, out long ap, out long aq)) return null;
+            if (!TryGetRationalPQ(b, out long bp, out long bq)) return null;
+            // sum = ap/aq + bp/bq = (ap*bq + bp*aq) / (aq*bq)
+            return FromRational(ap * bq + bp * aq, aq * bq);
+        }
+
+        private static bool TryGetRationalPQ(Surr s, out long p, out long q)
+        {
+            var val = TryEvaluate(s);
+            if (val.HasValue) { p = val.Value.Num; q = 1L << val.Value.Exp; return true; }
+            var gen = GeneratorHelper.GetGenerator(s);
+            if (gen != null) { p = gen.P; q = gen.Q; return true; }
+            p = q = 0; return false;
+        }
+
+        private static Surr TransfiniteAdd(Surr a, Surr b)
+        {
+            // Build left/right from finite parts + shifted infinite sets
+            var finiteLeft = Safe(b.left).Select(y => a + y)
+                .Concat(Safe(a.left).Select(x => b + x)).ToList();
+            var finiteRight = Safe(b.right).Select(y => a + y)
+                .Concat(Safe(a.right).Select(x => b + x)).ToList();
+
+            // Shifted infinite sets: if a has leftInf, each element x gets b added → new infinite set
+            IInfiniteSet newLeftInf = null;
+            IInfiniteSet newRightInf = null;
+
+            if (a.leftInf is NaturalNumbers && TryGetRationalPQ(b, out long bp, out long bq))
+                newLeftInf = new ShiftedNaturals(bp, bq);
+            else if (b.leftInf is NaturalNumbers && TryGetRationalPQ(a, out long ap2, out long aq2))
+                newLeftInf = new ShiftedNaturals(ap2, aq2);
+
+            // For right: if a.rightInf or b.rightInf exists, shift similarly
+            // (ω has no rightInf, so this mainly helps with other transfinite constructions)
+
+            return new Surr(newLeftInf, finiteLeft, newRightInf, finiteRight);
         }
 
         public static Surr operator -(Surr a, Surr b) => a + (-b);
