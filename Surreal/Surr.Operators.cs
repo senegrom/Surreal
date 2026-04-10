@@ -109,23 +109,32 @@ namespace Surreal
 
         private static Surr TransfiniteAdd(Surr a, Surr b)
         {
-            // Build left/right from finite parts + shifted infinite sets
-            var finiteLeft = Safe(b.left).Select(y => a + y)
-                .Concat(Safe(a.left).Select(x => b + x)).ToList();
-            var finiteRight = Safe(b.right).Select(y => a + y)
-                .Concat(Safe(a.right).Select(x => b + x)).ToList();
-
-            // Shifted infinite sets: if a has leftInf, each element x gets b added → new infinite set
+            var finiteLeft = new List<Surr>();
+            var finiteRight = new List<Surr>();
             IInfiniteSet newLeftInf = null;
             IInfiniteSet newRightInf = null;
 
-            if (a.leftInf is NaturalNumbers && TryGetRationalPQ(b, out long bp, out long bq))
-                newLeftInf = new ShiftedNaturals(bp, bq);
-            else if (b.leftInf is NaturalNumbers && TryGetRationalPQ(a, out long ap2, out long aq2))
-                newLeftInf = new ShiftedNaturals(ap2, aq2);
+            // Finite × finite cross-terms
+            foreach (var bL in Safe(b.left)) finiteLeft.Add(a + bL);
+            foreach (var aL in Safe(a.left)) finiteLeft.Add(aL + b);
+            foreach (var bR in Safe(b.right)) finiteRight.Add(a + bR);
+            foreach (var aR in Safe(a.right)) finiteRight.Add(aR + b);
 
-            // For right: if a.rightInf or b.rightInf exists, shift similarly
-            // (ω has no rightInf, so this mainly helps with other transfinite constructions)
+            // Infinite × value cross-terms: sample concrete elements, add other operand
+            if (b.leftInf != null)
+                foreach (var el in b.leftInf.SampleElements(3)) finiteLeft.Add(a + el);
+            if (a.leftInf != null)
+                foreach (var el in a.leftInf.SampleElements(3)) finiteLeft.Add(el + b);
+            if (b.rightInf != null)
+                foreach (var el in b.rightInf.SampleElements(3)) finiteRight.Add(a + el);
+            if (a.rightInf != null)
+                foreach (var el in a.rightInf.SampleElements(3)) finiteRight.Add(el + b);
+
+            // Shifted infinite sets for NaturalNumbers
+            if (a.leftInf is NaturalNumbers && TryGetRationalPQ(b, out var bp, out var bq))
+                newLeftInf = new ShiftedNaturals(bp, bq);
+            else if (b.leftInf is NaturalNumbers && TryGetRationalPQ(a, out var ap, out var aq))
+                newLeftInf = new ShiftedNaturals(ap, aq);
 
             return new Surr(newLeftInf, finiteLeft, newRightInf, finiteRight);
         }

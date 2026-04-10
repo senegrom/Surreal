@@ -53,8 +53,14 @@ namespace Surreal
             Console.WriteLine("=== Mixed: rationals + transfinite ===");
             var eps = Surr.InverseOmega;
             Console.WriteLine($"1/5 > 1/ω : {fifth > eps}");
-            Console.WriteLine($"1 + 1/5 > 1 + 1/ω : {(new Surr(1) + fifth) > (new Surr(1) + eps)}");
-            Console.WriteLine($"ω + 1/5 > ω : {(w + fifth) > w}");
+            var onePlusFifth = new Surr(1) + fifth;
+            Console.WriteLine($"1 + 1/5 = {onePlusFifth}");
+            Console.WriteLine($"1 + 1/5 > 1 : {onePlusFifth > 1}");
+            var onePlusEps = new Surr(1) + eps;
+            Console.WriteLine($"1 + 1/ω > 1 : {onePlusEps > 1}");
+            Console.WriteLine($"1 + 1/5 > 1 + 1/ω : {onePlusFifth > onePlusEps}");
+            var wPlusFifth = w + fifth;
+            Console.WriteLine($"ω + 1/5 > ω : {wPlusFifth > w}");
         }
     }
 }

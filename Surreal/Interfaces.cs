@@ -7,6 +7,8 @@ namespace Surreal
         bool HasElementGreaterOrEqual(Surr target);
         bool HasElementLessOrEqual(Surr target);
         string DisplayName { get; }
+        /// <summary>Return a few concrete (dyadic) elements from this set for cross-term computation.</summary>
+        Surr[] SampleElements(int count);
     }
 
     public sealed class NaturalNumbers : IInfiniteSet
@@ -28,6 +30,13 @@ namespace Surreal
         {
             return Surr.Zero <= target;
         }
+
+        public Surr[] SampleElements(int count)
+        {
+            var result = new Surr[count];
+            for (int i = 0; i < count; i++) result[i] = Surr.GetInt(i);
+            return result;
+        }
     }
 
     public sealed class PositivePowersOfHalf : IInfiniteSet
@@ -45,6 +54,13 @@ namespace Surreal
             for (int k = 0; k <= 50; k++)
                 if (Surr.Dyadic(1, k) <= target) return true;
             return false;
+        }
+
+        public Surr[] SampleElements(int count)
+        {
+            var result = new Surr[System.Math.Min(count, 20)];
+            for (int i = 0; i < result.Length; i++) result[i] = Surr.Dyadic(1, i);
+            return result;
         }
     }
 
@@ -72,8 +88,15 @@ namespace Surreal
 
         public bool HasElementLessOrEqual(Surr target)
         {
-            // Smallest element is 0 + p/q = p/q. True iff p/q <= target.
             return Surr.FromRational(_p, _q) <= target;
+        }
+
+        public Surr[] SampleElements(int count)
+        {
+            var result = new Surr[count];
+            for (int i = 0; i < count; i++)
+                result[i] = Surr.GetInt(i) + Surr.FromRational(_p, _q);
+            return result;
         }
     }
 
@@ -111,6 +134,12 @@ namespace Surreal
 
         /// <summary>Whether two generators have the same rule (converge to the same value).</summary>
         public bool SameRule(LazyDyadicApprox other) => P == other.P && Q == other.Q;
+
+        public void EnsureDepth(int totalElements)
+        {
+            while (Lower.Count + Upper.Count < totalElements + 2) // +2 for initial bounds
+                GenerateNext();
+        }
 
         public void GenerateNext()
         {
@@ -208,9 +237,13 @@ namespace Surreal
 
         public bool HasElementLessOrEqual(Surr target)
         {
-            // "Exists d < ourValue where d <= target?"
-            // The first element (floor) is small. Almost always true.
             return Gen.Lower[0] <= target;
+        }
+
+        public Surr[] SampleElements(int count)
+        {
+            Gen.EnsureDepth(count);
+            return Gen.Lower.ToArray();
         }
     }
 
@@ -231,6 +264,12 @@ namespace Surreal
             // "Exists d > ourValue where d >= target?"
             // The first element (ceil) is large. Almost always true.
             return target <= Gen.Upper[0];
+        }
+
+        public Surr[] SampleElements(int count)
+        {
+            Gen.EnsureDepth(count);
+            return Gen.Upper.ToArray();
         }
 
         public bool HasElementLessOrEqual(Surr target)

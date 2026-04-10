@@ -75,16 +75,31 @@ namespace Surreal.Tests
             Assert.True(Surr.FromRational(1, 1000) > Surr.InverseOmega);
         }
 
-        [Fact(Skip = "Addition with transfinite operands not yet implemented")]
+        [Fact]
         public void Omega_Plus_Rational_Greater_Than_Omega()
         {
             Assert.True(Surr.Omega + Surr.FromRational(1, 5) > Surr.Omega);
         }
 
-        [Fact(Skip = "Addition with infinitesimal operands not yet implemented")]
+        [Fact]
         public void One_Plus_InverseOmega_Greater_Than_One()
         {
             Assert.True(new Surr(1) + Surr.InverseOmega > 1);
+        }
+
+        [Fact]
+        public void One_Plus_Rational_Greater_Than_One_Plus_Infinitesimal()
+        {
+            var result1 = new Surr(1) + Surr.FromRational(1, 5);
+            var result2 = new Surr(1) + Surr.InverseOmega;
+            Assert.True(result1 > result2);
+        }
+
+        [Fact]
+        public void Omega_Plus_Integer()
+        {
+            // ω + 1 > ω
+            Assert.True(Surr.Omega + new Surr(1) > Surr.Omega);
         }
 
         [Fact]
