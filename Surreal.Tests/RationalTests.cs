@@ -53,6 +53,15 @@ namespace Surreal.Tests
         }
 
         [Fact]
+        public void OneFifth_Basic_Comparisons()
+        {
+            var fifth = Surr.FromRational(1, 5);
+            var third = Surr.FromRational(1, 3);
+            Assert.True(fifth > 0);
+            Assert.True(fifth < third);
+        }
+
+        [Fact]
         public void ThreeSevenths_Comparisons()
         {
             var x = Surr.FromRational(3, 7);
