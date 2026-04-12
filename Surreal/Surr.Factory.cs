@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Surreal
 {
@@ -189,6 +190,65 @@ namespace Surreal
         private static readonly Dictionary<(int, int), int> _nimProdCache = new();
 
         /// <summary>Multiply two nimbers as surreals: Nimber(a) ⊗ Nimber(b) = Nimber(NimProduct(a,b)).</summary>
+        /// <summary>
+        /// Temperature of a game: how much it matters who moves first.
+        /// For a number: temperature = 0. For {a|b} with a,b numeric: temperature = (a-b)/2.
+        /// Returns null if the game is too complex to evaluate.
+        /// </summary>
+        public static Surr Temperature(Surr g)
+        {
+            if (g.IsFinite)
+            {
+                var val = TryEvaluate(g);
+                if (val.HasValue) return Zero; // numbers have temperature 0
+
+                // Game with finite options: find max left - min right
+                var leftVals = Safe(g.left).Select(x => TryEvaluate(x)).Where(v => v.HasValue).ToList();
+                var rightVals = Safe(g.right).Select(x => TryEvaluate(x)).Where(v => v.HasValue).ToList();
+
+                if (leftVals.Count > 0 && rightVals.Count > 0)
+                {
+                    // For simple hot games: temp = (maxLeft - minRight) / 2
+                    // This assumes options are numbers
+                    var maxLeft = leftVals.Max();
+                    var minRight = rightVals.Min();
+                    if (maxLeft.Value.CompareTo(minRight.Value) > 0)
+                    {
+                        var diff = maxLeft.Value + (-minRight.Value);
+                        return Dyadic(diff.Num, diff.Exp + 1); // divide by 2
+                    }
+                }
+                return Zero; // cold game or *, nimbers
+            }
+            return null; // can't compute for infinite games
+        }
+
+        /// <summary>
+        /// Mean value of a game: the "average" outcome regardless of who moves first.
+        /// For a number: mean = itself. For {a|b} with a,b numeric: mean = (a+b)/2.
+        /// </summary>
+        public static Surr Mean(Surr g)
+        {
+            if (g.IsFinite)
+            {
+                var val = TryEvaluate(g);
+                if (val.HasValue) return g; // numbers are their own mean
+
+                var leftVals = Safe(g.left).Select(x => TryEvaluate(x)).Where(v => v.HasValue).ToList();
+                var rightVals = Safe(g.right).Select(x => TryEvaluate(x)).Where(v => v.HasValue).ToList();
+
+                if (leftVals.Count > 0 && rightVals.Count > 0)
+                {
+                    var maxLeft = leftVals.Max();
+                    var minRight = rightVals.Min();
+                    var sum = maxLeft.Value + minRight.Value;
+                    return Dyadic(sum.Num, sum.Exp + 1); // divide by 2
+                }
+                return Zero;
+            }
+            return null;
+        }
+
         public static Surr NimMultiply(Surr a, Surr b)
         {
             // Extract nimber values — find n such that a == Nimber(n)
