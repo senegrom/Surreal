@@ -8,11 +8,8 @@ namespace Surreal
         #region Comparison operators
         public static bool operator <=(Surr a, Surr b)
         {
-            var aVal = TryEvaluate(a);
-            var bVal = TryEvaluate(b);
-            if (aVal.HasValue && bVal.HasValue)
-                return aVal.Value.CompareTo(bVal.Value) <= 0;
-
+            // PURIST: no Dyad fast path — all comparisons go through Conway's recursive definition.
+            // a <= b iff !(exists x in a.left: b <= x) && !(exists y in b.right: y <= a)
             bool leftHasGe = (a.leftInf != null && a.leftInf.HasElementGreaterOrEqual(b))
                           || Safe(a.left).Any(x => b <= x);
             if (leftHasGe) return false;
