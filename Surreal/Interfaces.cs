@@ -181,6 +181,98 @@ namespace Surreal
         }
     }
 
+    /// <summary>The set {0, ω, 2ω, 3ω, ...} — multiples of ω. Used as left options of ω².</summary>
+    public sealed class OmegaMultiples : IInfiniteSet
+    {
+        public static readonly OmegaMultiples Instance = new();
+        private readonly List<Surr> _cache = new();
+        public string DisplayName => "0,ω,2ω,3ω,...";
+
+        public Surr Get(int n)
+        {
+            while (_cache.Count <= n)
+            {
+                if (_cache.Count == 0)
+                    _cache.Add(Surr.Zero);
+                else
+                    // n·ω = (n-1)·ω + ω, represented as {(n-1)·ω, naturals | }
+                    // with NaturalNumbers since n·ω > all finite integers
+                    _cache.Add(new Surr(
+                        NaturalNumbers.Instance, new List<Surr> { _cache[^1] },
+                        null, null,
+                        $"{_cache.Count}ω"));
+            }
+            return _cache[n];
+        }
+
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            // Some n·ω ≥ target? True unless target is ω² or beyond.
+            // Check: is target ≤ some small n·ω?
+            for (int n = 0; n <= 10; n++)
+                if (target <= Get(n)) return true;
+            return false;
+        }
+
+        public bool HasElementLessOrEqual(Surr target)
+        {
+            // 0 is in the set.
+            return Surr.Zero <= target;
+        }
+
+        public Surr[] SampleElements(int count)
+        {
+            var result = new Surr[count];
+            for (int i = 0; i < count; i++) result[i] = Get(i);
+            return result;
+        }
+    }
+
+    /// <summary>The set {1, ω, ω², ω³, ...} — powers of ω. Used as left options of ω^ω.</summary>
+    public sealed class OmegaPowers : IInfiniteSet
+    {
+        public static readonly OmegaPowers Instance = new();
+        private readonly List<Surr> _cache = new();
+        public string DisplayName => "1,ω,ω²,ω³,...";
+
+        public Surr Get(int n)
+        {
+            while (_cache.Count <= n)
+            {
+                if (_cache.Count == 0)
+                    _cache.Add(new Surr(1));
+                else if (_cache.Count == 1)
+                    _cache.Add(Surr.Omega);
+                else
+                    // ω^n has {all ω^(n-1) multiples | } as left, nothing right
+                    _cache.Add(new Surr(
+                        OmegaMultiples.Instance, new List<Surr> { _cache[^1] },
+                        null, null,
+                        $"ω^{_cache.Count}"));
+            }
+            return _cache[n];
+        }
+
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            for (int n = 0; n <= 5; n++)
+                if (target <= Get(n)) return true;
+            return false;
+        }
+
+        public bool HasElementLessOrEqual(Surr target)
+        {
+            return new Surr(1) <= target;
+        }
+
+        public Surr[] SampleElements(int count)
+        {
+            var result = new Surr[count];
+            for (int i = 0; i < count; i++) result[i] = Get(i);
+            return result;
+        }
+    }
+
     /// <summary>
     /// Lazy generator for dyadic approximations via binary search.
     /// The generating RULE is a predicate that decides, for each dyadic midpoint,

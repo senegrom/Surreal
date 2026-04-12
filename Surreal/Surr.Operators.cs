@@ -307,6 +307,20 @@ namespace Surreal
             if (aVal.HasValue && bVal.HasValue)
                 return Dyadic(aVal.Value.Num * bVal.Value.Num, aVal.Value.Exp + bVal.Value.Exp);
 
+            // ω * ω = ω²
+            bool aIsOmega = a._displayName == "ω";
+            bool bIsOmega = b._displayName == "ω";
+            if (aIsOmega && bIsOmega) return OmegaSquared;
+            if (aIsOmega && b._displayName == "ω²") return OmegaPowers.Instance.Get(3);
+            if (bIsOmega && a._displayName == "ω²") return OmegaPowers.Instance.Get(3);
+            if (a._displayName == "ω²" && b._displayName == "ω²") return OmegaPowers.Instance.Get(4);
+
+            // ω * integer = n·ω
+            if (aIsOmega && bVal.HasValue && bVal.Value.Exp == 0 && bVal.Value.Num > 0)
+                return OmegaMultiples.Instance.Get((int)bVal.Value.Num);
+            if (bIsOmega && aVal.HasValue && aVal.Value.Exp == 0 && aVal.Value.Num > 0)
+                return OmegaMultiples.Instance.Get((int)aVal.Value.Num);
+
             // generator * generator (both must exist)
             if (aGen is null || bGen is null) return null;
 

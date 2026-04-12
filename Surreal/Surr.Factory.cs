@@ -120,6 +120,18 @@ namespace Surreal
 
         private static readonly OmegaPowersOfHalf _omegaPowersOfHalf = new();
 
+        /// <summary>ω² = {0, ω, 2ω, 3ω, ... | }</summary>
+        public static readonly Surr OmegaSquared = new(
+            OmegaMultiples.Instance, null,
+            null, null,
+            "ω²");
+
+        /// <summary>ω^ω = {1, ω, ω², ω³, ... | }</summary>
+        public static readonly Surr OmegaToOmega = new(
+            OmegaPowers.Instance, null,
+            null, null,
+            "ω^ω");
+
         /// <summary>ω/2 = {naturals | ω, ω-1, ω-2, ...}</summary>
         public static readonly Surr OmegaHalf = new(
             NaturalNumbers.Instance, null,
