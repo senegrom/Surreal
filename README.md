@@ -18,7 +18,7 @@ From positive infinitesimals (1/ω) through all real numbers (rational, irration
 ```bash
 dotnet build
 dotnet run           # runs Starter.cs demo
-dotnet test          # runs 201 tests
+dotnet test          # runs 202 tests
 ```
 
 ## Usage
@@ -102,7 +102,7 @@ All comparisons use Conway's recursive definition:
 
 > **a ≤ b** iff no left option of a is ≥ b, and no right option of b is ≤ a.
 
-No built-in arithmetic shortcuts — the comparison recurses through the `{L|R}` structure. Performance comes from per-instance evaluation caching and memoized operations, not from bypassing the surreal framework.
+No built-in arithmetic shortcuts — the comparison recurses through the `{L|R}` structure. Performance comes from memoized `<=` results (cached by reference identity), per-instance evaluation caching, and memoized arithmetic operations.
 
 ### Infinite sets
 
@@ -127,8 +127,8 @@ Generators use a pluggable predicate ("is this dyadic below my target?") enablin
 
 | Operation | Finite numbers | Non-finite numbers |
 |-----------|---------------|-------------------|
-| `+`, `-` | Conway formula + auto-simplify + memoization | TransfiniteAdd with sampled cross-terms + symbolic sum decomposition |
-| `*` | Conway formula + auto-simplify + memoization | Algebraic tag dispatch (√n·√m=√(nm), ω·ω=ω²) + FOIL expansion for symbolic sums |
+| `+`, `-` | Conway formula + auto-simplify + memoization | TransfiniteAdd with sampled cross-terms + symbolic sum decomposition. Full Conway formula for finite games. |
+| `*` | Conway formula + auto-simplify + memoization | Algebraic tag dispatch (√n·√m=√(nm), ω·ω=ω²) + FOIL expansion with automatic cancellation of opposite terms |
 | `/` | Algebraic: dyadic/dyadic, rational/rational, √n/√m, ω/n | General Conway inverse not yet implemented |
 | Negation | Swap and negate L/R | Propagates symbolic terms |
 | Simplify | Evaluate to dyadic rational, reconstruct canonical form | Identity (no-op) |
@@ -163,8 +163,9 @@ Surreal.Tests/
 ## Design philosophy
 
 - **No cheating**: Runtime comparisons use Conway's recursive surreal definition, never C# arithmetic shortcuts. Integer arithmetic appears only during construction (defining what a set contains).
+- **Memoized comparison**: The `<=` operator caches results by reference identity, enabling efficient deep comparison of game trees and complex surreal structures.
 - **Lazy generation**: Infinite sets generate dyadic approximations on demand, caching results. No precision limits — termination is guaranteed by same-rule identity checks or interleaved bracket separation.
-- **Symbolic tracking**: Surreals from transfinite addition carry symbolic expression terms, enabling FOIL expansion in multiplication (e.g., (√ω-√2)(√ω+√2) = ω-2).
+- **Symbolic tracking**: Surreals from transfinite addition carry symbolic expression terms, enabling FOIL expansion in multiplication (e.g., (√ω-5)(√ω+5) = ω-25).
 
 ## Requirements
 
