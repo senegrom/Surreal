@@ -104,9 +104,19 @@ namespace Surreal
             if (sumRational is not null) return sumRational;
 
             // Symbolic path: decompose into transfinite + finite parts, recombine finite parts.
-            // E.g., (ω - 25) + 25 → transfinite terms: [(ω,+)], finite terms: [(-25,+),(25,+)] → ω + 0 = ω
             var symbolic = TrySymbolicSum(a, b);
             if (symbolic is not null) return symbolic;
+
+            // For finite games (no infinite sets on either side): use full Conway formula
+            // without SafeAdd limits. Games need all cross-terms for correct comparison.
+            if (a.IsFinite && b.IsFinite)
+            {
+                var left1 = Safe(b.left).Select(y => a + y);
+                var left2 = Safe(a.left).Select(x => b + x);
+                var right1 = Safe(b.right).Select(y => a + y);
+                var right2 = Safe(a.right).Select(x => b + x);
+                return new Surr(left1.Concat(left2).ToList(), right1.Concat(right2).ToList(), raw: false);
+            }
 
             // Transfinite path: construct surreal with shifted infinite sets
             return TransfiniteAdd(a, b);
@@ -120,22 +130,24 @@ namespace Surreal
         /// Add two surreals, returning null if it would trigger deep TransfiniteAdd recursion.
         /// Safe for use in cross-term computation within TransfiniteAdd.
         /// </summary>
+        [System.ThreadStatic] private static int _safeAddDepth;
+
         private static Surr SafeAdd(Surr a, Surr b)
         {
             if (a.IsZero) return b;
             if (b.IsZero) return a;
-            if (a.IsFinite && b.IsFinite) return a + b;
+            // Both evaluable dyadics: fast path, no recursion risk
+            var av = TryEvaluate(a);
+            var bv = TryEvaluate(b);
+            if (av.HasValue && bv.HasValue) return a + b;
+            // Rational sum: no recursion risk
             var rat = TryRationalSum(a, b);
             if (rat is not null) return rat;
-            // If both are non-finite, let TransfiniteAdd handle it
-            if (!a.IsFinite && !b.IsFinite) return a + b;
-            // One is non-finite, one is finite. Only safe if the finite side is "small"
-            // (won't create a chain of recursive TransfiniteAdd calls via its left/right options).
-            var finite = a.IsFinite ? a : b;
-            var val = TryEvaluate(finite);
-            if (val.HasValue && System.Math.Abs(val.Value.Num) <= 3 && val.Value.Exp == 0)
-                return a + b; // small integer: at most 3 levels of recursion
-            return null; // skip to avoid deep recursion
+            // Limit recursion depth for anything else (games, transfinite sums)
+            if (_safeAddDepth >= 4) return null;
+            _safeAddDepth++;
+            try { return a + b; }
+            finally { _safeAddDepth--; }
         }
 
         private static Surr TryRationalSum(Surr a, Surr b)
@@ -554,14 +566,35 @@ namespace Surreal
                 }
             }
 
-            // Cancel matching +/- pairs (e.g., +√(2ω) and -√(2ω))
+            // Cancel pairs that sum to zero: same negate with opposite values,
+            // or different negate with same values.
             for (int i = 0; i < products.Count; i++)
             {
                 for (int j = i + 1; j < products.Count; j++)
                 {
-                    if (products[i].negate != products[j].negate
-                        && products[i].value._displayName != null
+                    bool cancels = false;
+                    // Same negate, opposite values: +X and +(-X) → cancels
+                    if (products[i].negate == products[j].negate)
+                    {
+                        var vi = products[i].value;
+                        var vj = products[j].value;
+                        if (vi._displayName != null && vj._displayName != null
+                            && (vi._displayName == $"-({vj._displayName})"
+                                || vj._displayName == $"-({vi._displayName})"
+                                || (vi._displayName.StartsWith("-") && vj._displayName == vi._displayName[1..])
+                                || (vj._displayName.StartsWith("-") && vi._displayName == vj._displayName[1..])))
+                            cancels = true;
+                        // Also check via TryEvaluate: values are negatives of each other
+                        var avi = TryEvaluate(vi); var avj = TryEvaluate(vj);
+                        if (avi.HasValue && avj.HasValue && avi.Value.Num == -avj.Value.Num && avi.Value.Exp == avj.Value.Exp)
+                            cancels = true;
+                    }
+                    // Different negate, same values
+                    else if (products[i].value._displayName != null
                         && products[i].value._displayName == products[j].value._displayName)
+                        cancels = true;
+
+                    if (cancels)
                     {
                         products.RemoveAt(j);
                         products.RemoveAt(i);

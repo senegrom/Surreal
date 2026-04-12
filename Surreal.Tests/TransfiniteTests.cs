@@ -220,7 +220,7 @@ namespace Surreal.Tests
             Assert.True(product + new Surr(3) == Surr.Omega);
         }
 
-        [Fact(Skip = "FOIL integer path: TransfiniteAdd(ω,-25) creates deep sample chains")]
+        [Fact]
         public void Difference_Of_Squares_With_Integer()
         {
             // (√ω - 5)(√ω + 5) + 25 = ω

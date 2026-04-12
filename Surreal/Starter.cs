@@ -97,6 +97,20 @@ namespace Surreal
             Console.WriteLine($"(ω-25) symbolic: {wm25._symbolicTerms?.Count}");
             Console.Out.Flush();
             Console.WriteLine($"(ω-25)+25 = {wm25 + new Surr(25)}");
+
+            Console.WriteLine("FOIL integer test:");
+            var five = new Surr(5);
+            var foilProduct = (sw - five) * (sw + five);
+            Console.WriteLine($"  product = {foilProduct}");
+            Console.WriteLine($"  product symbolic: {foilProduct._symbolicTerms?.Count}");
+            Console.WriteLine($"  product + 25 = {foilProduct + new Surr(25)}");
+            Console.WriteLine($"  == ω: {(foilProduct + new Surr(25)) == w}");
+
+            Console.WriteLine("↑+↓ test:");
+            var upDown = Surr.Up + Surr.Down;
+            Console.WriteLine($"  ↑+↓ <= * : {upDown <= Surr.Star}");
+            Console.WriteLine($"  * <= ↑+↓ : {Surr.Star <= upDown}");
+            Console.Out.Flush();
             Console.WriteLine($"swMinus.IsFinite: {swMinus._symbolicTerms != null}");
             Console.WriteLine($"swPlus.IsFinite: {swPlus._symbolicTerms != null}");
             Console.WriteLine("Computing product...");

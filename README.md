@@ -18,7 +18,7 @@ From positive infinitesimals (1/ω) through all real numbers (rational, irration
 ```bash
 dotnet build
 dotnet run           # runs Starter.cs demo
-dotnet test          # runs 200 tests
+dotnet test          # runs 201 tests
 ```
 
 ## Usage
