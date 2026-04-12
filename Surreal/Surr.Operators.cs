@@ -168,6 +168,11 @@ namespace Surreal
                 return result;
             }
 
+            // Algebraic product path: use generator tags to compute known products
+            var known = TryKnownProduct(a, b);
+            if (known is not null) return known;
+
+            // Fallback for unknown non-finite products
             var aL2 = Safe(a.left); var aR2 = Safe(a.right);
             var bL2 = Safe(b.left); var bR2 = Safe(b.right);
             var lo = aL2.SelectMany(al => bL2.Select(bl => al * b + a * bl - al * bl))
@@ -175,6 +180,74 @@ namespace Surreal
             var ro = aL2.SelectMany(al => bR2.Select(br => al * b + a * br - al * br))
                 .Concat(aR2.SelectMany(ar => bL2.Select(bl => ar * b + a * bl - ar * bl)));
             return new Surr(lo, ro);
+        }
+
+        private static Surr TryKnownProduct(Surr a, Surr b)
+        {
+            var aGen = GeneratorHelper.GetGenerator(a);
+            var bGen = GeneratorHelper.GetGenerator(b);
+            var aVal = TryEvaluate(a);
+            var bVal = TryEvaluate(b);
+
+            // dyadic * rational generator
+            if (aVal.HasValue && bGen?.P != null && bGen?.Q != null)
+            {
+                long num = aVal.Value.Num * bGen.P.Value;
+                long den = (1L << aVal.Value.Exp) * bGen.Q.Value;
+                return FromRational(num, den);
+            }
+            if (bVal.HasValue && aGen?.P != null && aGen?.Q != null)
+            {
+                long num = bVal.Value.Num * aGen.P.Value;
+                long den = (1L << bVal.Value.Exp) * aGen.Q.Value;
+                return FromRational(num, den);
+            }
+
+            // dyadic * sqrt: k * √n = √(k²n)
+            if (aVal.HasValue && bGen != null && bGen.Tag.StartsWith("sqrt:"))
+            {
+                long n = long.Parse(bGen.Tag[5..]);
+                long k = aVal.Value.Num;
+                long kDen = 1L << aVal.Value.Exp;
+                // (k/kDen) * √n = √(k²n / kDen²) — only clean for integer k
+                if (aVal.Value.Exp == 0 && k > 0)
+                    return FromSqrt(k * k * n);
+                // For dyadic k: k*√n is not a simple sqrt. Use FromPredicate.
+                // mid < k*√n ↔ mid/k < √n ↔ (mid*kDen)² < n * (k * 2^exp)²
+                return FromPredicate(
+                    (midNum, exp) => midNum * midNum * kDen * kDen < n * k * k * (1L << (2 * exp)),
+                    (long)(k * System.Math.Sqrt(n) / kDen),
+                    $"{aVal.Value}·√{n}");
+            }
+            if (bVal.HasValue && aGen != null && aGen.Tag.StartsWith("sqrt:"))
+            {
+                long n = long.Parse(aGen.Tag[5..]);
+                long k = bVal.Value.Num;
+                long kDen = 1L << bVal.Value.Exp;
+                if (bVal.Value.Exp == 0 && k > 0)
+                    return FromSqrt(k * k * n);
+                return FromPredicate(
+                    (midNum, exp) => midNum * midNum * kDen * kDen < n * k * k * (1L << (2 * exp)),
+                    (long)(k * System.Math.Sqrt(n) / kDen),
+                    $"{bVal.Value}·√{n}");
+            }
+
+            // generator * generator (both must exist)
+            if (aGen is null || bGen is null) return null;
+
+            // sqrt * sqrt: √n * √m = √(nm)
+            if (aGen.Tag.StartsWith("sqrt:") && bGen.Tag.StartsWith("sqrt:"))
+            {
+                long n = long.Parse(aGen.Tag[5..]);
+                long m = long.Parse(bGen.Tag[5..]);
+                return FromSqrt(n * m);
+            }
+
+            // rational * rational: (p1/q1) * (p2/q2)
+            if (aGen.P.HasValue && bGen.P.HasValue)
+                return FromRational(aGen.P.Value * bGen.P.Value, aGen.Q.Value * bGen.Q.Value);
+
+            return null;
         }
 
         public static Surr operator *(Surr a, long b) => a * new Surr(b);

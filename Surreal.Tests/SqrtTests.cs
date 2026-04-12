@@ -102,5 +102,50 @@ namespace Surreal.Tests
         {
             Assert.True(Surr.Omega > Surr.FromSqrt(2));
         }
+
+        [Fact]
+        public void Sqrt2_Times_Sqrt2_Equals_2()
+        {
+            var sqrt2 = Surr.FromSqrt(2);
+            Assert.True(sqrt2 * sqrt2 == 2);
+        }
+
+        [Fact]
+        public void Sqrt3_Times_Sqrt3_Equals_3()
+        {
+            Assert.True(Surr.FromSqrt(3) * Surr.FromSqrt(3) == 3);
+        }
+
+        [Fact]
+        public void Sqrt2_Times_Sqrt3_Equals_Sqrt6()
+        {
+            var result = Surr.FromSqrt(2) * Surr.FromSqrt(3);
+            Assert.True(result == Surr.FromSqrt(6));
+        }
+
+        [Fact]
+        public void Sqrt2_Times_Sqrt8_Equals_4()
+        {
+            // √2 * √8 = √16 = 4
+            Assert.True(Surr.FromSqrt(2) * Surr.FromSqrt(8) == 4);
+        }
+
+        [Fact]
+        public void Integer_Times_Sqrt()
+        {
+            // 3 * √2 > 4 (since 3*1.414 ≈ 4.243)
+            var result = new Surr(3) * Surr.FromSqrt(2);
+            Assert.True(result > 4);
+            Assert.True(result < 5);
+        }
+
+        [Fact]
+        public void Rational_Times_Sqrt()
+        {
+            // (1/2) * √2 = √(1/2) ≈ 0.707
+            var result = Surr.Half * Surr.FromSqrt(2);
+            Assert.True(result > Surr.FromRational(7, 10));
+            Assert.True(result < 1);
+        }
     }
 }
