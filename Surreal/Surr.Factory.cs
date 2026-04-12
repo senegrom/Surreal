@@ -99,6 +99,88 @@ namespace Surreal
                 "π");
         }
 
+        /// <summary>e (Euler's number) ≈ 2.71828... via Dedekind cut.</summary>
+        public static Surr E() => FromPredicate(
+            (midNum, exp) => midNum < Math.E * (1L << exp), 2, "e");
+
+        /// <summary>
+        /// Birthday of a surreal: the "day" it was first born.
+        /// Day 0: 0. Day n: integer n or dyadic with denominator 2^n. Returns -1 if unknown.
+        /// </summary>
+        public static int Birthday(Surr s)
+        {
+            var val = TryEvaluate(s);
+            if (!val.HasValue) return -1;
+            if (val.Value.Num == 0) return 0;
+            if (val.Value.Exp == 0) return (int)Math.Abs(val.Value.Num);
+            return (int)Math.Abs(val.Value.Num); // approx: |numerator| in simplest form
+        }
+
+        /// <summary>
+        /// Sign expansion: the +/- sequence encoding the surreal's position in the binary tree.
+        /// Integers: n copies of + (positive) or - (negative). 0: empty.
+        /// Dyadics: integer signs then fractional binary digits.
+        /// </summary>
+        /// <summary>
+        /// Sign expansion: trace the path through the surreal binary tree.
+        /// At each step, + means "go right" (toward larger), - means "go left" (toward smaller).
+        /// Integers: n copies of +/-. Dyadics: integer signs + fractional binary path.
+        /// </summary>
+        public static string SignExpansion(Surr s)
+        {
+            var val = TryEvaluate(s);
+            if (!val.HasValue) return null;
+            var d = val.Value;
+            if (d.Num == 0 && d.Exp == 0) return "";
+            var signs = new System.Text.StringBuilder();
+            if (d.Exp == 0)
+            {
+                // Integer: |n| copies of + or -
+                signs.Append(d.Num > 0 ? '+' : '-', (int)Math.Abs(d.Num));
+                return signs.ToString();
+            }
+            // Dyadic n/2^k: trace the surreal tree path.
+            // The surreal tree goes: 0 → ±1 → ±2 or ±1/2 → ...
+            // Phase 1: integer signs. For positive target between n-1 and n: n copies of +.
+            // Phase 2: binary search between two adjacent integers.
+            long den = 1L << d.Exp;
+            long target = d.Num; // value = target / den
+            long floor = target >= 0 ? target / den : -((-target + den - 1) / den);
+            long lo, hi;
+            if (target > 0)
+            {
+                signs.Append('+', (int)(floor + 1));     // go to ceil
+                lo = floor * den; hi = (floor + 1) * den; // bracket [floor, floor+1]
+            }
+            else if (target < 0)
+            {
+                signs.Append('-', (int)(-floor));        // go to floor (which is negative)
+                lo = floor * den; hi = (floor + 1) * den;
+            }
+            else return signs.ToString(); // shouldn't reach here (target=0 handled above)
+
+            // Phase 2: binary search [lo, hi]. Current position starts at the
+            // integer (hi end for positive, lo end for negative).
+            // Each step: the midpoint becomes the new node. If target is below
+            // the current node → '-' (go left), else → '+' (go right).
+            long cur = target > 0 ? hi : lo;
+            while (cur != target)
+            {
+                long mid = (lo + hi) / 2;
+                if (target < cur)
+                {
+                    signs.Append('-');
+                    hi = cur; cur = mid;
+                }
+                else
+                {
+                    signs.Append('+');
+                    lo = cur; cur = mid;
+                }
+            }
+            return signs.ToString();
+        }
+
         #region Well-known constants
         public static readonly Surr Half = Dyadic(1, 1);
         public static readonly Surr Zero = new Surr(0L);
@@ -132,6 +214,19 @@ namespace Surreal
             NaturalNumbers.Instance, null,
             OmegaMinusNaturals.Instance, null,
             "ω/2");
+
+        /// <summary>ε₀ (epsilon-naught) — the first fixed point of x → ω^x. Greater than all ω^n.</summary>
+        public static readonly Surr EpsilonNaught = new(
+            null, new List<Surr> {
+                Omega,
+                OmegaSquared,
+                OmegaToOmega,
+                OmegaPowers.Instance.Get(3),
+                OmegaPowers.Instance.Get(4),
+                OmegaPowers.Instance.Get(5)
+            },
+            null, null,
+            "ε₀");
 
         /// <summary>
         /// √ω — the surreal whose square is ω. Greater than all finite integers, less than ω.

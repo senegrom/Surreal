@@ -337,6 +337,11 @@ namespace Surreal
         public static Surr operator *(Surr a, Surr b)
         {
             if (a.IsZero || b.IsZero) return Zero;
+            // Identity: 1 * x = x
+            var av1 = TryEvaluate(a);
+            if (av1.HasValue && av1.Value.Num == 1 && av1.Value.Exp == 0) return b;
+            var bv1 = TryEvaluate(b);
+            if (bv1.HasValue && bv1.Value.Num == 1 && bv1.Value.Exp == 0) return a;
 
             // Symbolic FOIL: check before IsFinite since TransfiniteAdd results may appear finite
             var foil = TrySymbolicProduct(a, b);
