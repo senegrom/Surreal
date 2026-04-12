@@ -10,7 +10,7 @@ namespace Surreal
         internal readonly IInfiniteSet leftInf, rightInf;
         internal IInfiniteSet LeftInf => leftInf;
         internal IInfiniteSet RightInf => rightInf;
-        private readonly string _displayName;
+        internal readonly string _displayName;
 
         private Dyad? _cachedValue;
         private bool _evalAttempted;

@@ -61,6 +61,26 @@ namespace Surreal
             Console.WriteLine($"1 + 1/5 > 1 + 1/ω : {onePlusFifth > onePlusEps}");
             var wPlusFifth = w + fifth;
             Console.WriteLine($"ω + 1/5 > ω : {wPlusFifth > w}");
+
+            Console.WriteLine();
+            Console.WriteLine("=== √ω ===");
+            var sw = Surr.SqrtOmega;
+            Console.WriteLine($"√ω = {sw}");
+            Console.WriteLine($"√ω > 100 : {sw > 100}");
+            Console.WriteLine($"√ω < ω : {sw < w}");
+            Console.WriteLine($"√ω * √ω = {sw * sw}");
+            Console.WriteLine($"√ω * √ω == ω : {sw * sw == w}");
+            Console.WriteLine($"√ω * √2 = {sw * Surr.FromSqrt(2)}");
+            Console.WriteLine($"√2 * √2 = {Surr.FromSqrt(2) * Surr.FromSqrt(2)}");
+            var s2 = Surr.FromSqrt(2);
+            var swPlus = sw + s2;
+            var swMinus = sw - s2;
+            Console.WriteLine($"√ω + √2 = {swPlus}");
+            Console.WriteLine($"√ω - √2 = {swMinus}");
+            var product = swMinus * swPlus;
+            Console.WriteLine($"(√ω-√2)(√ω+√2) = {product}");
+            Console.WriteLine($"(√ω-√2)(√ω+√2) + 2 = {product + 2}");
+            Console.WriteLine($"(√ω-√2)(√ω+√2) + 2 == ω : {product + 2 == w}");
         }
     }
 }

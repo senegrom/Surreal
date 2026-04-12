@@ -232,6 +232,31 @@ namespace Surreal
                     $"{bVal.Value}·√{n}");
             }
 
+            // Check if either is √ω (display name based, since it has no generator)
+            bool aIsSqrtOmega = a._displayName == "√ω";
+            bool bIsSqrtOmega = b._displayName == "√ω";
+
+            // √ω * √ω = ω
+            if (aIsSqrtOmega && bIsSqrtOmega) return Omega;
+
+            // √ω * √n = √(n·ω) — represented as tagged transfinite surreal
+            if (aIsSqrtOmega && bGen != null && bGen.Tag.StartsWith("sqrt:"))
+            {
+                long n = long.Parse(bGen.Tag[5..]);
+                return MakeSqrtNOmega(n);
+            }
+            if (bIsSqrtOmega && aGen != null && aGen.Tag.StartsWith("sqrt:"))
+            {
+                long n = long.Parse(aGen.Tag[5..]);
+                return MakeSqrtNOmega(n);
+            }
+
+            // √ω * integer k = k√ω — tagged transfinite
+            if (aIsSqrtOmega && bVal.HasValue && bVal.Value.Exp == 0)
+                return MakeKSqrtOmega(bVal.Value.Num);
+            if (bIsSqrtOmega && aVal.HasValue && aVal.Value.Exp == 0)
+                return MakeKSqrtOmega(aVal.Value.Num);
+
             // generator * generator (both must exist)
             if (aGen is null || bGen is null) return null;
 
@@ -248,6 +273,21 @@ namespace Surreal
                 return FromRational(aGen.P.Value * bGen.P.Value, aGen.Q.Value * bGen.Q.Value);
 
             return null;
+        }
+
+        /// <summary>√(n·ω) — transfinite surreal, tagged for algebraic manipulation.</summary>
+        private static Surr MakeSqrtNOmega(long n)
+        {
+            // √(nω) * √(nω) = nω. Greater than all finite reals, less than ω.
+            return new Surr(NaturalNumbers.Instance, null, null, new List<Surr> { Omega }, $"√({n}ω)");
+        }
+
+        /// <summary>k·√ω — transfinite surreal.</summary>
+        private static Surr MakeKSqrtOmega(long k)
+        {
+            if (k == 0) return Zero;
+            if (k == 1) return SqrtOmega;
+            return new Surr(NaturalNumbers.Instance, null, null, new List<Surr> { Omega }, $"{k}√ω");
         }
 
         public static Surr operator *(Surr a, long b) => a * new Surr(b);
