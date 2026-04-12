@@ -124,6 +124,7 @@ namespace Surreal
 
             if (s.leftInf != null || s.rightInf != null) return null;
             if (s.IsZero) { s._cachedValue = new Dyad(0, 0); return s._cachedValue; }
+            if (!s.IsNumeric) return null; // games like * = {0|0} can't be evaluated
 
             var leftVals = new List<Dyad>();
             foreach (var x in Safe(s.left))

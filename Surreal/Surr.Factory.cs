@@ -141,5 +141,26 @@ namespace Surreal
             _omegaPowersOfHalf, null,
             "√ω");
         #endregion
+
+        #region Games (non-numeric surreals)
+
+        /// <summary>* (star) = {0|0} — fuzzy game, incomparable with 0. First player wins.</summary>
+        public static readonly Surr Star = new(new[] { Zero }, new[] { Zero });
+
+        /// <summary>↑ (up) = {0|*} — positive infinitesimal game.</summary>
+        public static readonly Surr Up = new(new[] { Zero }, new[] { Star });
+
+        /// <summary>↓ (down) = {*|0} — negative infinitesimal game.</summary>
+        public static readonly Surr Down = new(new[] { Star }, new[] { Zero });
+
+        /// <summary>Nimber *n — the Sprague-Grundy value n. *0=0, *1=*, *2={0,*|0,*}, etc.</summary>
+        public static Surr Nimber(int n)
+        {
+            if (n == 0) return Zero;
+            var options = new Surr[n];
+            for (int i = 0; i < n; i++) options[i] = Nimber(i);
+            return new Surr(options, options);
+        }
+        #endregion
     }
 }
