@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 
 namespace Surreal
 {
@@ -96,13 +97,42 @@ namespace Surreal
             }
 
             // Rational path: if both have known rational/dyadic values, sum the rationals.
-            // This constructs the result via FromRational (lazy generators, surreal comparison).
-            // The integer arithmetic here is construction-time only (same as FromRational's generator).
             var sumRational = TryRationalSum(a, b);
             if (sumRational is not null) return sumRational;
 
+            // Symbolic path: decompose into transfinite + finite parts, recombine finite parts.
+            // E.g., (ω - 25) + 25 → transfinite terms: [(ω,+)], finite terms: [(-25,+),(25,+)] → ω + 0 = ω
+            var symbolic = TrySymbolicSum(a, b);
+            if (symbolic is not null) return symbolic;
+
             // Transfinite path: construct surreal with shifted infinite sets
             return TransfiniteAdd(a, b);
+        }
+
+        /// <summary>
+        /// Add two surreals, but return null instead of entering TransfiniteAdd
+        /// if the result would trigger deep recursion. Used for cross-terms.
+        /// </summary>
+        /// <summary>
+        /// Add two surreals, returning null if it would trigger deep TransfiniteAdd recursion.
+        /// Safe for use in cross-term computation within TransfiniteAdd.
+        /// </summary>
+        private static Surr SafeAdd(Surr a, Surr b)
+        {
+            if (a.IsZero) return b;
+            if (b.IsZero) return a;
+            if (a.IsFinite && b.IsFinite) return a + b;
+            var rat = TryRationalSum(a, b);
+            if (rat is not null) return rat;
+            // If both are non-finite, let TransfiniteAdd handle it
+            if (!a.IsFinite && !b.IsFinite) return a + b;
+            // One is non-finite, one is finite. Only safe if the finite side is "small"
+            // (won't create a chain of recursive TransfiniteAdd calls via its left/right options).
+            var finite = a.IsFinite ? a : b;
+            var val = TryEvaluate(finite);
+            if (val.HasValue && System.Math.Abs(val.Value.Num) <= 3 && val.Value.Exp == 0)
+                return a + b; // small integer: at most 3 levels of recursion
+            return null; // skip to avoid deep recursion
         }
 
         private static Surr TryRationalSum(Surr a, Surr b)
@@ -112,6 +142,80 @@ namespace Surreal
             if (!TryGetRationalPQ(b, out long bp, out long bq)) return null;
             // sum = ap/aq + bp/bq = (ap*bq + bp*aq) / (aq*bq)
             return FromRational(ap * bq + bp * aq, aq * bq);
+        }
+
+        /// <summary>
+        /// Decompose both operands into transfinite + finite parts via symbolic terms,
+        /// sum the finite parts, and rebuild. E.g., (ω - 25) + 25 → ω + 0 = ω.
+        /// </summary>
+        /// <summary>
+        /// Decompose both operands into transfinite + finite parts via symbolic terms,
+        /// sum the finite parts, and rebuild. E.g., (ω - 25) + 25 → ω + 0 = ω.
+        /// Only activates when at least one operand HAS symbolic terms (from TransfiniteAdd).
+        /// </summary>
+        [System.ThreadStatic] private static bool _inSymbolicSum;
+
+        private static Surr TrySymbolicSum(Surr a, Surr b)
+        {
+            // Only try if at least one operand has symbolic terms from a previous TransfiniteAdd
+            if (a._symbolicTerms is null && b._symbolicTerms is null) return null;
+
+            var terms = new List<(Surr factor, bool negate)>();
+            AddSymbolicTerms(terms, a, false);
+            AddSymbolicTerms(terms, b, false);
+
+            // Separate into evaluable (finite) and non-evaluable (transfinite) terms
+            var transfinite = new List<(Surr factor, bool negate)>();
+            long finiteNum = 0, finiteDen = 1;
+
+            foreach (var (f, neg) in terms)
+            {
+                var val = TryEvaluate(f);
+                if (val.HasValue)
+                {
+                    long fDen = 1L << val.Value.Exp;
+                    long commonDen = finiteDen * fDen;
+                    finiteNum = finiteNum * fDen + (neg ? -1 : 1) * val.Value.Num * finiteDen;
+                    finiteDen = commonDen;
+                    long g = Gcd(System.Math.Abs(finiteNum), finiteDen);
+                    if (g > 0) { finiteNum /= g; finiteDen /= g; }
+                }
+                else
+                {
+                    transfinite.Add((f, neg));
+                }
+            }
+
+            // Must have at least one transfinite and have reduced some finite terms
+            if (transfinite.Count == 0 || transfinite.Count == terms.Count) return null;
+
+            // Rebuild without calling operator+ (to avoid recursion).
+            // If just one transfinite term and no finite remainder, return it directly.
+            if (transfinite.Count == 1 && finiteNum == 0)
+            {
+                var (f, neg) = transfinite[0];
+                return neg ? -f : f;
+            }
+
+            // One transfinite term + finite remainder: use TransfiniteAdd directly
+            if (transfinite.Count == 1)
+            {
+                var (f, neg) = transfinite[0];
+                var finiteVal = (finiteDen & (finiteDen - 1)) == 0
+                    ? Dyadic(finiteNum, BitOperations.TrailingZeroCount((ulong)finiteDen))
+                    : FromRational(finiteNum, finiteDen);
+                var tf = neg ? -f : f;
+                return TransfiniteAdd(tf, finiteVal);
+            }
+
+            // Multiple transfinite terms: fall back (can't simplify without operator+)
+            return null;
+        }
+
+        private static long Gcd(long a, long b)
+        {
+            while (b != 0) { (a, b) = (b, a % b); }
+            return a;
         }
 
         private static bool TryGetRationalPQ(Surr s, out long p, out long q)
@@ -130,11 +234,12 @@ namespace Surreal
             IInfiniteSet newLeftInf = null;
             IInfiniteSet newRightInf = null;
 
-            // Finite × finite cross-terms
-            foreach (var bL in Safe(b.left)) finiteLeft.Add(a + bL);
-            foreach (var aL in Safe(a.left)) finiteLeft.Add(aL + b);
-            foreach (var bR in Safe(b.right)) finiteRight.Add(a + bR);
-            foreach (var aR in Safe(a.right)) finiteRight.Add(aR + b);
+            // Finite cross-terms. Use SafeAdd to avoid deep recursion: if a+bL would
+            // re-enter TransfiniteAdd with a large finite chain, SafeAdd returns null.
+            foreach (var bL in Safe(b.left)) { var s = SafeAdd(a, bL); if (s is not null) finiteLeft.Add(s); }
+            foreach (var aL in Safe(a.left)) { var s = SafeAdd(aL, b); if (s is not null) finiteLeft.Add(s); }
+            foreach (var bR in Safe(b.right)) { var s = SafeAdd(a, bR); if (s is not null) finiteRight.Add(s); }
+            foreach (var aR in Safe(a.right)) { var s = SafeAdd(aR, b); if (s is not null) finiteRight.Add(s); }
 
             // Infinite × value cross-terms: sample concrete elements, add other operand
             if (b.leftInf != null)

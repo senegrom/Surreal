@@ -90,6 +90,13 @@ namespace Surreal
             var swMinus = sw - s2;
             Console.WriteLine($"√ω + √2 terms: {swPlus._symbolicTerms?.Count ?? 0}");
             Console.WriteLine($"√ω - √2 terms: {swMinus._symbolicTerms?.Count ?? 0}");
+            // Test integer identity directly
+            Console.WriteLine($"ω - 25 = {(w - 25)}");
+            var wm25 = w - 25;
+            Console.WriteLine($"(ω-25) leftInf null: {wm25.leftInf == null}");
+            Console.WriteLine($"(ω-25) symbolic: {wm25._symbolicTerms?.Count}");
+            Console.Out.Flush();
+            Console.WriteLine($"(ω-25)+25 = {wm25 + new Surr(25)}");
             Console.WriteLine($"swMinus.IsFinite: {swMinus._symbolicTerms != null}");
             Console.WriteLine($"swPlus.IsFinite: {swPlus._symbolicTerms != null}");
             Console.WriteLine("Computing product...");

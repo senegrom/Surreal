@@ -98,12 +98,6 @@ namespace Surreal
                 "π");
         }
 
-        private static long Gcd(long a, long b)
-        {
-            while (b != 0) { (a, b) = (b, a % b); }
-            return a;
-        }
-
         #region Well-known constants
         public static readonly Surr Half = Dyadic(1, 1);
         public static readonly Surr Zero = new Surr(0L);

@@ -220,7 +220,7 @@ namespace Surreal.Tests
             Assert.True(product + new Surr(3) == Surr.Omega);
         }
 
-        [Fact(Skip = "TransfiniteAdd recursion on (ω-25)+25 — needs fix")]
+        [Fact(Skip = "FOIL with integer terms creates samples that hit Evaluate on transfinite")]
         public void Difference_Of_Squares_With_Integer()
         {
             // (√ω - 5)(√ω + 5) + 25 = ω
@@ -254,9 +254,13 @@ namespace Surreal.Tests
         [Fact]
         public void Omega_Minus_One_Plus_One_Equals_Omega()
         {
-            // (ω - 1) + 1 = ω
-            var result = (Surr.Omega - 1) + new Surr(1);
-            Assert.True(result == Surr.Omega);
+            Assert.True((Surr.Omega - 1) + new Surr(1) == Surr.Omega);
+        }
+
+        [Fact]
+        public void Omega_Minus_25_Plus_25_Equals_Omega()
+        {
+            Assert.True((Surr.Omega - 25) + new Surr(25) == Surr.Omega);
         }
     }
 }
