@@ -333,6 +333,91 @@ namespace Surreal
             return new Surr(lo, ro);
         }
 
+        public static Surr operator /(Surr a, Surr b)
+        {
+            if (b.IsZero) throw new System.DivideByZeroException("Division by surreal zero");
+            if (a.IsZero) return Zero;
+
+            // Known quotient patterns
+            var known = TryKnownQuotient(a, b);
+            if (known is not null) return known;
+
+            // Fallback: not yet implemented for general case
+            throw new System.NotImplementedException(
+                $"General surreal division not yet implemented for {a} / {b}");
+        }
+
+        public static Surr operator /(Surr a, long b) => a / new Surr(b);
+        public static Surr operator /(long a, Surr b) => new Surr(a) / b;
+
+        private static Surr TryKnownQuotient(Surr a, Surr b)
+        {
+            var aVal = TryEvaluate(a);
+            var bVal = TryEvaluate(b);
+            var aGen = GeneratorHelper.GetGenerator(a);
+            var bGen = GeneratorHelper.GetGenerator(b);
+
+            // dyadic / dyadic → rational
+            if (aVal.HasValue && bVal.HasValue)
+            {
+                long num = aVal.Value.Num * (1L << bVal.Value.Exp);
+                long den = (1L << aVal.Value.Exp) * bVal.Value.Num;
+                if (den < 0) { num = -num; den = -den; }
+                return FromRational(num, den);
+            }
+
+            // rational / dyadic or dyadic / rational
+            if (aGen?.P != null && bVal.HasValue)
+            {
+                long num = aGen.P.Value * (1L << bVal.Value.Exp);
+                long den = aGen.Q.Value * bVal.Value.Num;
+                if (den < 0) { num = -num; den = -den; }
+                return FromRational(num, den);
+            }
+            if (aVal.HasValue && bGen?.P != null)
+            {
+                long num = aVal.Value.Num * bGen.Q.Value;
+                long den = (1L << aVal.Value.Exp) * bGen.P.Value;
+                if (den < 0) { num = -num; den = -den; }
+                return FromRational(num, den);
+            }
+
+            // rational / rational
+            if (aGen?.P != null && bGen?.P != null)
+            {
+                long num = aGen.P.Value * bGen.Q.Value;
+                long den = aGen.Q.Value * bGen.P.Value;
+                if (den < 0) { num = -num; den = -den; }
+                return FromRational(num, den);
+            }
+
+            // √n / √m = √(n/m) if n/m is integer, else (√n/√m) = √n · (1/√m)
+            if (aGen != null && bGen != null
+                && aGen.Tag.StartsWith("sqrt:") && bGen.Tag.StartsWith("sqrt:"))
+            {
+                long n = long.Parse(aGen.Tag[5..]);
+                long m = long.Parse(bGen.Tag[5..]);
+                if (n % m == 0) return FromSqrt(n / m);
+                // √n / √m = √(n·m) / m  — rationalize denominator
+                return FromSqrt(n * m) / new Surr(m);
+            }
+
+            // ω / positive integer = OmegaMultiples slot (conceptual, ω/n < ω)
+            if (a._displayName == "ω" && bVal.HasValue && bVal.Value.Exp == 0 && bVal.Value.Num > 0)
+            {
+                long n = bVal.Value.Num;
+                if (n == 1) return a;
+                if (n == 2) return OmegaHalf;
+                // General ω/n: {naturals | ω/(n-1), ω/(n-1)-1, ...}
+                return new Surr(
+                    NaturalNumbers.Instance, null,
+                    OmegaMinusNaturals.Instance, new System.Collections.Generic.List<Surr> { a / new Surr(n - 1) },
+                    $"ω/{n}");
+            }
+
+            return null;
+        }
+
         private static Surr TryKnownProduct(Surr a, Surr b)
         {
             var aGen = GeneratorHelper.GetGenerator(a);
