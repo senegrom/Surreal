@@ -46,9 +46,28 @@ namespace Surreal
         public static Surr operator -(Surr a)
         {
             if (a.IsZero) return a;
-            return new Surr(
-                Safe(a.right).Select(x => -x).ToList(),
-                Safe(a.left).Select(x => -x).ToList(), raw: true).Simplify();
+            if (a.IsFinite)
+                return new Surr(
+                    Safe(a.right).Select(x => -x).ToList(),
+                    Safe(a.left).Select(x => -x).ToList(), raw: true).Simplify();
+
+            // For non-finite: construct negation and propagate symbolic terms
+            var neg = new Surr(
+                a.rightInf, Safe(a.right).Select(x => -x).ToList(),
+                a.leftInf, Safe(a.left).Select(x => -x).ToList());
+            if (a._symbolicTerms != null)
+            {
+                neg._symbolicTerms = new List<(Surr, bool)>();
+                foreach (var (f, n) in a._symbolicTerms)
+                    neg._symbolicTerms.Add((f, !n));
+            }
+            else
+            {
+                neg._symbolicTerms = new List<(Surr, bool)> { (a, true) };
+            }
+            if (a._displayName != null)
+                neg._displayName = $"-({a._displayName})";
+            return neg;
         }
 
         private static readonly Dictionary<(Dyad, Dyad), Surr> AddCache = new();
@@ -133,7 +152,30 @@ namespace Surreal
             else if (b.leftInf is NaturalNumbers && TryGetRationalPQ(a, out var ap, out var aq))
                 newLeftInf = new ShiftedNaturals(ap, aq);
 
-            return new Surr(newLeftInf, finiteLeft, newRightInf, finiteRight);
+            var result = new Surr(newLeftInf, finiteLeft, newRightInf, finiteRight);
+
+            // Tag with symbolic terms for algebraic expansion in multiplication
+            result._symbolicTerms = new List<(Surr, bool)>();
+            AddSymbolicTerms(result._symbolicTerms, a, false);
+            AddSymbolicTerms(result._symbolicTerms, b, false);
+
+            if (a._displayName != null && b._displayName != null)
+                result._displayName = $"{a._displayName}+{b._displayName}";
+
+            return result;
+        }
+
+        private static void AddSymbolicTerms(List<(Surr factor, bool negate)> terms, Surr s, bool negate)
+        {
+            if (s._symbolicTerms != null)
+            {
+                foreach (var (f, n) in s._symbolicTerms)
+                    terms.Add((f, n ^ negate));
+            }
+            else
+            {
+                terms.Add((s, negate));
+            }
         }
 
         public static Surr operator -(Surr a, Surr b) => a + (-b);
@@ -147,6 +189,10 @@ namespace Surreal
         public static Surr operator *(Surr a, Surr b)
         {
             if (a.IsZero || b.IsZero) return Zero;
+
+            // Symbolic FOIL: check before IsFinite since TransfiniteAdd results may appear finite
+            var foil = TrySymbolicProduct(a, b);
+            if (foil is not null) return foil;
 
             if (a.IsFinite && b.IsFinite)
             {
@@ -168,7 +214,7 @@ namespace Surreal
                 return result;
             }
 
-            // Algebraic product path: use generator tags to compute known products
+            // Algebraic product path: use generator tags
             var known = TryKnownProduct(a, b);
             if (known is not null) return known;
 
@@ -273,6 +319,52 @@ namespace Surreal
                 return FromRational(aGen.P.Value * bGen.P.Value, aGen.Q.Value * bGen.Q.Value);
 
             return null;
+        }
+
+        /// <summary>
+        /// FOIL expansion: if both operands have symbolic terms, multiply each pair
+        /// and sum the results. Cancels matching +/- pairs before summing.
+        /// </summary>
+        private static Surr TrySymbolicProduct(Surr a, Surr b)
+        {
+            var aTerms = a._symbolicTerms;
+            var bTerms = b._symbolicTerms;
+            if (aTerms is null || bTerms is null) return null;
+
+            // Compute all cross-products
+            var products = new List<(Surr value, bool negate)>();
+            foreach (var (af, an) in aTerms)
+            {
+                foreach (var (bf, bn) in bTerms)
+                {
+                    var product = TryKnownProduct(af, bf);
+                    if (product is null) return null;
+                    products.Add((product, an ^ bn));
+                }
+            }
+
+            // Cancel matching +/- pairs (e.g., +√(2ω) and -√(2ω))
+            for (int i = 0; i < products.Count; i++)
+            {
+                for (int j = i + 1; j < products.Count; j++)
+                {
+                    if (products[i].negate != products[j].negate
+                        && products[i].value._displayName != null
+                        && products[i].value._displayName == products[j].value._displayName)
+                    {
+                        products.RemoveAt(j);
+                        products.RemoveAt(i);
+                        i--;
+                        break;
+                    }
+                }
+            }
+
+            // Sum remaining products
+            Surr sum = Zero;
+            foreach (var (value, negate) in products)
+                sum = negate ? sum - value : sum + value;
+            return sum;
         }
 
         /// <summary>√(n·ω) — transfinite surreal, tagged for algebraic manipulation.</summary>

@@ -103,14 +103,21 @@ namespace Surreal
             PositivePowersOfHalf.Instance, null,
             "1/ω");
 
+        private static readonly OmegaPowersOfHalf _omegaPowersOfHalf = new();
+
+        /// <summary>ω/2 = {naturals | ω, ω-1, ω-2, ...}</summary>
+        public static readonly Surr OmegaHalf = new(
+            NaturalNumbers.Instance, null,
+            OmegaMinusNaturals.Instance, null,
+            "ω/2");
+
         /// <summary>
         /// √ω — the surreal whose square is ω. Greater than all finite integers, less than ω.
-        /// Constructed as {naturals | ω} with algebraic tag "sqrt:omega".
-        /// Multiplication rule: √ω * √ω = ω, √ω * √n = √(nω).
+        /// Constructed as {naturals | ω, ω/2, ω/4, ω/8, ...} — proper right options via division.
         /// </summary>
         public static readonly Surr SqrtOmega = new(
             NaturalNumbers.Instance, null,
-            null, new List<Surr> { Omega },
+            _omegaPowersOfHalf, null,
             "√ω");
         #endregion
     }

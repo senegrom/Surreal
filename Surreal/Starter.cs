@@ -72,15 +72,32 @@ namespace Surreal
             Console.WriteLine($"√ω * √ω == ω : {sw * sw == w}");
             Console.WriteLine($"√ω * √2 = {sw * Surr.FromSqrt(2)}");
             Console.WriteLine($"√2 * √2 = {Surr.FromSqrt(2) * Surr.FromSqrt(2)}");
+            // Test ω - n works
+            var wm1 = w - 1;
+            var wm2 = w - 2;
+            Console.WriteLine($"ω - 1 > 100 : {wm1 > 100}");
+            Console.WriteLine($"ω - 2 < ω - 1 : {wm2 < wm1}");
+            Console.WriteLine($"ω - 1 < ω : {wm1 < w}");
+
+            // Test ω/2
+            var wh = Surr.OmegaHalf;
+            Console.WriteLine($"ω/2 > 100 : {wh > 100}");
+            Console.WriteLine($"ω/2 < ω : {wh < w}");
+            Console.WriteLine($"ω/2 < ω-1 : {wh < wm1}");
+
             var s2 = Surr.FromSqrt(2);
             var swPlus = sw + s2;
             var swMinus = sw - s2;
-            Console.WriteLine($"√ω + √2 = {swPlus}");
-            Console.WriteLine($"√ω - √2 = {swMinus}");
+            Console.WriteLine($"√ω + √2 terms: {swPlus._symbolicTerms?.Count ?? 0}");
+            Console.WriteLine($"√ω - √2 terms: {swMinus._symbolicTerms?.Count ?? 0}");
+            Console.WriteLine($"swMinus.IsFinite: {swMinus._symbolicTerms != null}");
+            Console.WriteLine($"swPlus.IsFinite: {swPlus._symbolicTerms != null}");
+            Console.WriteLine("Computing product...");
+            Console.Out.Flush();
             var product = swMinus * swPlus;
             Console.WriteLine($"(√ω-√2)(√ω+√2) = {product}");
-            Console.WriteLine($"(√ω-√2)(√ω+√2) + 2 = {product + 2}");
-            Console.WriteLine($"(√ω-√2)(√ω+√2) + 2 == ω : {product + 2 == w}");
+            Console.WriteLine($"(√ω-√2)(√ω+√2) + 2 = {product + new Surr(2)}");
+            Console.WriteLine($"(√ω-√2)(√ω+√2) + 2 == ω : {(product + new Surr(2)) == w}");
         }
     }
 }

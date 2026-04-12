@@ -10,7 +10,10 @@ namespace Surreal
         internal readonly IInfiniteSet leftInf, rightInf;
         internal IInfiniteSet LeftInf => leftInf;
         internal IInfiniteSet RightInf => rightInf;
-        internal readonly string _displayName;
+        internal string _displayName;
+
+        /// <summary>Symbolic components: if this surreal is a sum of simpler parts, track them for algebraic expansion.</summary>
+        internal List<(Surr factor, bool negate)> _symbolicTerms;
 
         private Dyad? _cachedValue;
         private bool _evalAttempted;

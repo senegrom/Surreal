@@ -98,8 +98,38 @@ namespace Surreal.Tests
         [Fact]
         public void Omega_Plus_Integer()
         {
-            // ω + 1 > ω
             Assert.True(Surr.Omega + new Surr(1) > Surr.Omega);
+        }
+
+        [Fact]
+        public void OmegaHalf_Ordering()
+        {
+            Assert.True(Surr.OmegaHalf > 100);
+            Assert.True(Surr.OmegaHalf < Surr.Omega);
+            Assert.True(Surr.OmegaHalf < Surr.Omega - 1);
+        }
+
+        [Fact]
+        public void SqrtOmega_Ordering()
+        {
+            Assert.True(Surr.SqrtOmega > 100);
+            Assert.True(Surr.SqrtOmega < Surr.Omega);
+        }
+
+        [Fact]
+        public void SqrtOmega_Squared_Equals_Omega()
+        {
+            Assert.True(Surr.SqrtOmega * Surr.SqrtOmega == Surr.Omega);
+        }
+
+        [Fact]
+        public void Difference_Of_Squares_Identity()
+        {
+            // (√ω - √2)(√ω + √2) + 2 = ω
+            var sw = Surr.SqrtOmega;
+            var s2 = Surr.FromSqrt(2);
+            var product = (sw - s2) * (sw + s2);
+            Assert.True(product + new Surr(2) == Surr.Omega);
         }
 
         [Fact]

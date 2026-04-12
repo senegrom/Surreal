@@ -100,6 +100,87 @@ namespace Surreal
         }
     }
 
+    /// <summary>The set {ω, ω-1, ω-2, ...} — ω minus each natural number.</summary>
+    public sealed class OmegaMinusNaturals : IInfiniteSet
+    {
+        public static readonly OmegaMinusNaturals Instance = new();
+        public string DisplayName => "ω,ω-1,ω-2,...";
+
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            // ω is in the set. True iff target ≤ ω.
+            return target <= Surr.Omega;
+        }
+
+        public bool HasElementLessOrEqual(Surr target)
+        {
+            // Check ω-n for n=0,1,2,... Returns true if any ω-n ≤ target.
+            // For target between naturals and ω-k: ω-n > target for all finite n → false.
+            // For target ≥ ω-k for some k: ω-k ≤ target → true.
+            for (int n = 0; n <= 50; n++)
+                if ((Surr.Omega - n) <= target) return true;
+            return false;
+        }
+
+        public Surr[] SampleElements(int count)
+        {
+            var result = new Surr[count];
+            for (int i = 0; i < count; i++)
+                result[i] = Surr.Omega - new Surr(i);
+            return result;
+        }
+    }
+
+    /// <summary>The set {ω, ω/2, ω/4, ω/8, ...} — ω divided by powers of 2.</summary>
+    public sealed class OmegaPowersOfHalf : IInfiniteSet
+    {
+        private readonly List<Surr> _cache = new();
+
+        public string DisplayName => "ω,ω/2,ω/4,...";
+
+        public Surr Get(int k)
+        {
+            while (_cache.Count <= k)
+            {
+                if (_cache.Count == 0)
+                    _cache.Add(Surr.Omega);
+                else
+                {
+                    // ω/2^k = {naturals | ω/2^(k-1), ω/2^(k-1) - 1, ω/2^(k-1) - 2, ...}
+                    // Simplified: {naturals | previous}
+                    var prev = _cache[^1];
+                    _cache.Add(new Surr(
+                        NaturalNumbers.Instance, null,
+                        OmegaMinusNaturals.Instance, new List<Surr> { prev },
+                        $"ω/{1L << _cache.Count}"));
+                }
+            }
+            return _cache[k];
+        }
+
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            // ω is in the set. True iff target ≤ ω.
+            return target <= Surr.Omega;
+        }
+
+        public bool HasElementLessOrEqual(Surr target)
+        {
+            // Elements decrease: ω > ω/2 > ω/4 > ... All > all naturals.
+            // True iff target > some ω/2^k, i.e., target is "comparable to ω" level.
+            for (int k = 0; k <= 10; k++)
+                if (Get(k) <= target) return true;
+            return false;
+        }
+
+        public Surr[] SampleElements(int count)
+        {
+            var result = new Surr[count];
+            for (int i = 0; i < count; i++) result[i] = Get(i);
+            return result;
+        }
+    }
+
     /// <summary>
     /// Lazy generator for dyadic approximations via binary search.
     /// The generating RULE is a predicate that decides, for each dyadic midpoint,
