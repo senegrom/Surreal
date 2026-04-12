@@ -41,6 +41,48 @@ namespace Surreal
                 name);
         }
 
+        /// <summary>
+        /// Create a surreal number for √n.
+        /// Uses binary search with predicate "mid² &lt; n" to generate dyadic approximations.
+        /// </summary>
+        public static Surr FromSqrt(long n)
+        {
+            if (n < 0) throw new ArgumentException("n must be non-negative");
+            // Check for perfect squares
+            long root = (long)Math.Sqrt(n);
+            if (root * root == n) return new Surr(root);
+            if ((root + 1) * (root + 1) == n) return new Surr(root + 1);
+
+            // Predicate: is midNum/2^exp < √n?  ↔  midNum² < n * 4^exp
+            var gen = new LazyDyadicApprox(
+                (midNum, exp) => midNum * midNum < n * (1L << (2 * exp)),
+                root,
+                $"sqrt:{n}");
+
+            string name = $"√{n}";
+            return new Surr(
+                new DyadicApproxBelow(gen, $"↗{name}"),
+                null,
+                new DyadicApproxAbove(gen, $"↘{name}"),
+                null,
+                name);
+        }
+
+        /// <summary>
+        /// Create a surreal from a general Dedekind cut predicate among dyadics.
+        /// The predicate tests: is midNum/2^exp below the target value?
+        /// </summary>
+        public static Surr FromPredicate(Func<long, int, bool> isBelow, long floor, string name)
+        {
+            var gen = new LazyDyadicApprox(isBelow, floor, $"pred:{name}");
+            return new Surr(
+                new DyadicApproxBelow(gen, $"↗{name}"),
+                null,
+                new DyadicApproxAbove(gen, $"↘{name}"),
+                null,
+                name);
+        }
+
         private static long Gcd(long a, long b)
         {
             while (b != 0) { (a, b) = (b, a % b); }

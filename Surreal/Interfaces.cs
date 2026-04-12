@@ -101,15 +101,22 @@ namespace Surreal
     }
 
     /// <summary>
-    /// Lazy generator for dyadic approximations of a rational p/q via binary search.
-    /// The generating RULE is the binary search process itself. The (P, Q) parameters
-    /// identify the rule — two generators with the same (P, Q) converge to the same value.
+    /// Lazy generator for dyadic approximations via binary search.
+    /// The generating RULE is a predicate that decides, for each dyadic midpoint,
+    /// whether it is below the target value. Different predicates define different numbers:
+    /// rationals (p/q), square roots (√n), or any Dedekind cut among dyadics.
     /// Integer arithmetic is used only during generation. All comparisons use surreal <=.
     /// </summary>
     public sealed class LazyDyadicApprox
     {
-        /// <summary>The generating rule identity (reduced fraction).</summary>
-        public readonly long P, Q;
+        /// <summary>String tag identifying the generating rule. Same tag = same value.</summary>
+        public readonly string Tag;
+
+        /// <summary>For rational generators: the numerator and denominator. Null otherwise.</summary>
+        public readonly long? P, Q;
+
+        /// <summary>Predicate: is midNum/2^exp below our target? Used during generation only.</summary>
+        private readonly System.Func<long, int, bool> _isBelow;
 
         private long _loNum, _hiNum;
         private int _exp;
@@ -117,27 +124,39 @@ namespace Surreal
         public readonly List<Surr> Lower = new();
         public readonly List<Surr> Upper = new();
 
-        public LazyDyadicApprox(long p, long q)
+        /// <summary>General constructor: provide a predicate and floor value.</summary>
+        public LazyDyadicApprox(System.Func<long, int, bool> isBelow, long floor, string tag)
         {
-            P = p; Q = q;
-
-            long intPart = p >= 0 ? p / q : (p / q - 1);
-            if (intPart * q > p) intPart--;
-
-            _loNum = intPart;
-            _hiNum = intPart + 1;
+            Tag = tag;
+            _isBelow = isBelow;
+            _loNum = floor;
+            _hiNum = floor + 1;
             _exp = 0;
-
-            Lower.Add(Surr.GetInt(intPart));
-            Upper.Add(Surr.GetInt(intPart + 1));
+            Lower.Add(Surr.GetInt(floor));
+            Upper.Add(Surr.GetInt(floor + 1));
         }
 
-        /// <summary>Whether two generators have the same rule (converge to the same value).</summary>
-        public bool SameRule(LazyDyadicApprox other) => P == other.P && Q == other.Q;
+        /// <summary>Convenience constructor for rational p/q.</summary>
+        public LazyDyadicApprox(long p, long q) : this(
+            (midNum, exp) => p * (1L << exp) > midNum * q,
+            FloorRat(p, q),
+            $"rat:{p}/{q}")
+        { P = p; Q = q; }
+
+        private static long FloorRat(long p, long q)
+        {
+            // Floor division: largest integer <= p/q
+            long f = p / q;
+            if (f * q > p) f--;
+            return f;
+        }
+
+        /// <summary>Whether two generators converge to the same value.</summary>
+        public bool SameRule(LazyDyadicApprox other) => Tag == other.Tag;
 
         public void EnsureDepth(int totalElements)
         {
-            while (Lower.Count + Upper.Count < totalElements + 2) // +2 for initial bounds
+            while (Lower.Count + Upper.Count < totalElements + 2)
                 GenerateNext();
         }
 
@@ -148,18 +167,17 @@ namespace Surreal
             _hiNum *= 2;
             long midNum = _loNum + 1;
 
-            bool pqLessThanMid = P * (1L << _exp) < midNum * Q;
             var midSurr = Surr.Dyadic(midNum, _exp);
 
-            if (pqLessThanMid)
-            {
-                Upper.Add(midSurr);
-                _hiNum = midNum;
-            }
-            else
+            if (_isBelow(midNum, _exp))
             {
                 Lower.Add(midSurr);
                 _loNum = midNum;
+            }
+            else
+            {
+                Upper.Add(midSurr);
+                _hiNum = midNum;
             }
         }
 
@@ -175,9 +193,8 @@ namespace Surreal
                 GenerateNext();
                 other.GenerateNext();
 
-                // Our upper bound vs their lower bound (surreal <= on dyadics → fast)
-                if (Upper[^1] <= other.Lower[^1]) return -1; // we < them
-                if (other.Upper[^1] <= Lower[^1]) return 1;  // we > them
+                if (Upper[^1] <= other.Lower[^1]) return -1;
+                if (other.Upper[^1] <= Lower[^1]) return 1;
             }
         }
     }

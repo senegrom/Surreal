@@ -100,7 +100,7 @@ namespace Surreal
             var val = TryEvaluate(s);
             if (val.HasValue) { p = val.Value.Num; q = 1L << val.Value.Exp; return true; }
             var gen = GeneratorHelper.GetGenerator(s);
-            if (gen != null) { p = gen.P; q = gen.Q; return true; }
+            if (gen?.P != null && gen?.Q != null) { p = gen.P.Value; q = gen.Q.Value; return true; }
             p = q = 0; return false;
         }
 
