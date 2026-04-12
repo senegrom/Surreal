@@ -142,10 +142,52 @@ namespace Surreal.Tests
         [Fact]
         public void Rational_Times_Sqrt()
         {
-            // (1/2) * √2 = √(1/2) ≈ 0.707
+            // (1/2) * √2 ≈ 0.707
             var result = Surr.Half * Surr.FromSqrt(2);
             Assert.True(result > Surr.FromRational(7, 10));
             Assert.True(result < 1);
+        }
+
+        [Fact]
+        public void Sqrt5_Between_2_And_3()
+        {
+            var s5 = Surr.FromSqrt(5);
+            Assert.True(s5 > 2);
+            Assert.True(s5 < 3);
+        }
+
+        [Fact]
+        public void Sqrt2_Plus_Sqrt3_Greater_Than_Sqrt5()
+        {
+            // √2 + √3 ≈ 2.828 > √5 ≈ 2.236
+            var sum = Surr.FromSqrt(2) + Surr.FromSqrt(3);
+            Assert.True(sum > Surr.FromSqrt(5));
+        }
+
+        [Fact]
+        public void Sqrt2_Squared_Minus_2_Equals_Zero()
+        {
+            var s2 = Surr.FromSqrt(2);
+            Assert.True(s2 * s2 - 2 == 0);
+        }
+
+        [Fact]
+        public void Sqrt_Large_Number()
+        {
+            // √100 = 10 (perfect square)
+            Assert.True(Surr.FromSqrt(100) == 10);
+            // √101 is between 10 and 11
+            var s101 = Surr.FromSqrt(101);
+            Assert.True(s101 > 10);
+            Assert.True(s101 < 11);
+        }
+
+        [Fact]
+        public void Sqrt2_Times_Sqrt2_Times_Sqrt2_Times_Sqrt2()
+        {
+            // (√2)^4 = 4
+            var s2 = Surr.FromSqrt(2);
+            Assert.True(s2 * s2 * s2 * s2 == 4);
         }
     }
 }

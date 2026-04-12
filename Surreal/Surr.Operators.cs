@@ -303,6 +303,10 @@ namespace Surreal
             if (bIsSqrtOmega && aVal.HasValue && aVal.Value.Exp == 0)
                 return MakeKSqrtOmega(aVal.Value.Num);
 
+            // Both evaluable dyadics: product is a dyadic
+            if (aVal.HasValue && bVal.HasValue)
+                return Dyadic(aVal.Value.Num * bVal.Value.Num, aVal.Value.Exp + bVal.Value.Exp);
+
             // generator * generator (both must exist)
             if (aGen is null || bGen is null) return null;
 

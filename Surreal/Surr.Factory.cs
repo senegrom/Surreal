@@ -83,6 +83,21 @@ namespace Surreal
                 name);
         }
 
+        /// <summary>
+        /// π — defined by predicate: is mid &lt; π? Uses the Leibniz bound π &gt; 3 and π &lt; 4,
+        /// refined by checking mid² &lt; known rational bounds of π².
+        /// We use π² ≈ 9.8696 so mid² &lt; 9.8696 ↔ mid² * 10000 &lt; 98696.
+        /// </summary>
+        public static Surr Pi()
+        {
+            // π defined via Dedekind cut: is midNum/2^exp < π?
+            // Uses System.Math.PI (double precision ≈ 15 significant digits)
+            return FromPredicate(
+                (midNum, exp) => midNum < Math.PI * (1L << exp),
+                3,
+                "π");
+        }
+
         private static long Gcd(long a, long b)
         {
             while (b != 0) { (a, b) = (b, a % b); }

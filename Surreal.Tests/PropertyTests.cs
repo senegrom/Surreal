@@ -104,5 +104,54 @@ namespace Surreal.Tests
             var star = new Surr(new[] { new Surr(0) }, new[] { new Surr(0) });
             Assert.False(star.IsNumeric);
         }
+
+        [Fact]
+        public void Multiplication_Associative()
+        {
+            var a = new Surr(2); var b = new Surr(3); var c = new Surr(4);
+            Assert.True((a * b) * c == a * (b * c));
+        }
+
+        [Fact]
+        public void Negation_Of_Product()
+        {
+            // -(a*b) == (-a)*b == a*(-b)
+            var a = new Surr(3); var b = new Surr(4);
+            Assert.True(-(a * b) == (-a) * b);
+            Assert.True(-(a * b) == a * (-b));
+        }
+
+        [Fact]
+        public void Subtraction_Is_AntiCommutative()
+        {
+            // a - b == -(b - a)
+            var a = new Surr(5); var b = new Surr(3);
+            Assert.True(a - b == -(b - a));
+        }
+
+        [Fact]
+        public void Dyadic_Multiplication_Distributes()
+        {
+            // 1/2 * (3 + 5) == 1/2 * 3 + 1/2 * 5
+            var half = Surr.Half;
+            var three = new Surr(3); var five = new Surr(5);
+            Assert.True(half * (three + five) == half * three + half * five);
+        }
+
+        [Fact]
+        public void Simplify_Of_Sum_Is_Correct()
+        {
+            // 3 + 4 = 7, verify simplification
+            var result = new Surr(3) + new Surr(4);
+            Assert.True(result.Simplify() == 7);
+        }
+
+        [Fact]
+        public void Zero_Times_Anything_Is_Zero()
+        {
+            Assert.True(Surr.Zero * Surr.Half == 0);
+            Assert.True(Surr.Zero * new Surr(-7) == 0);
+            Assert.True(Surr.Zero * Surr.Dyadic(3, 2) == 0);
+        }
     }
 }

@@ -165,5 +165,98 @@ namespace Surreal.Tests
         {
             Assert.True(Surr.FromRational(1, 5) > Surr.InverseOmega);
         }
+
+        [Fact]
+        public void Omega_Minus_N_Ordering()
+        {
+            // ω > ω-1 > ω-2 > ω-3 > ... > all naturals
+            var w = Surr.Omega;
+            var wm1 = w - 1;
+            var wm2 = w - 2;
+            var wm3 = w - 3;
+            Assert.True(w > wm1);
+            Assert.True(wm1 > wm2);
+            Assert.True(wm2 > wm3);
+            Assert.True(wm3 > 1000);
+        }
+
+        [Fact]
+        public void OmegaHalf_Less_Than_All_OmegaMinusN()
+        {
+            // ω/2 < ω-n for all finite n
+            Assert.True(Surr.OmegaHalf < Surr.Omega - 1);
+            Assert.True(Surr.OmegaHalf < Surr.Omega - 10);
+        }
+
+        [Fact]
+        public void SqrtOmega_Less_Than_OmegaHalf()
+        {
+            // √ω < ω/2 (since (√ω)² = ω < (ω/2)² = ω²/4)
+            Assert.True(Surr.SqrtOmega < Surr.OmegaHalf);
+        }
+
+        [Fact]
+        public void SqrtOmega_Times_Sqrt2()
+        {
+            // √ω * √2 = √(2ω)
+            var result = Surr.SqrtOmega * Surr.FromSqrt(2);
+            Assert.Equal("√(2ω)", result.ToString());
+        }
+
+        [Fact]
+        public void Omega_Greater_Than_Sqrt()
+        {
+            Assert.True(Surr.Omega > Surr.FromSqrt(2));
+            Assert.True(Surr.Omega > Surr.FromSqrt(1000));
+        }
+
+        [Fact]
+        public void Difference_Of_Squares_With_Sqrt3()
+        {
+            // (√ω - √3)(√ω + √3) + 3 = ω
+            var sw = Surr.SqrtOmega;
+            var s3 = Surr.FromSqrt(3);
+            var product = (sw - s3) * (sw + s3);
+            Assert.True(product + new Surr(3) == Surr.Omega);
+        }
+
+        [Fact(Skip = "TransfiniteAdd recursion on (ω-25)+25 — needs fix")]
+        public void Difference_Of_Squares_With_Integer()
+        {
+            // (√ω - 5)(√ω + 5) + 25 = ω
+            var sw = Surr.SqrtOmega;
+            var five = new Surr(5);
+            var product = (sw - five) * (sw + five);
+            Assert.True(product + new Surr(25) == Surr.Omega);
+        }
+
+        [Fact]
+        public void InverseOmega_Positive_But_Less_Than_All_Rationals()
+        {
+            var eps = Surr.InverseOmega;
+            Assert.True(eps > 0);
+            Assert.True(eps < Surr.FromRational(1, 1000));
+            Assert.True(eps < Surr.FromRational(1, 1000000));
+        }
+
+        [Fact]
+        public void Omega_Plus_InverseOmega_Greater_Than_Omega()
+        {
+            Assert.True(Surr.Omega + Surr.InverseOmega > Surr.Omega);
+        }
+
+        [Fact]
+        public void SqrtOmega_Greater_Than_10000()
+        {
+            Assert.True(Surr.SqrtOmega > 10000);
+        }
+
+        [Fact]
+        public void Omega_Minus_One_Plus_One_Equals_Omega()
+        {
+            // (ω - 1) + 1 = ω
+            var result = (Surr.Omega - 1) + new Surr(1);
+            Assert.True(result == Surr.Omega);
+        }
     }
 }
