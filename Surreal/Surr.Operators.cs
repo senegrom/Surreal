@@ -1,23 +1,51 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace Surreal
 {
     public sealed partial class Surr
     {
         #region Comparison operators
+
+        /// <summary>Memoization cache for <= comparisons, keyed by reference identity.</summary>
+        private static readonly Dictionary<(Surr, Surr), bool> LeqCache = new(SurrPairComparer.Instance);
+
+        private sealed class SurrPairComparer : IEqualityComparer<(Surr, Surr)>
+        {
+            public static readonly SurrPairComparer Instance = new();
+            public bool Equals((Surr, Surr) x, (Surr, Surr) y)
+                => ReferenceEquals(x.Item1, y.Item1) && ReferenceEquals(x.Item2, y.Item2);
+            public int GetHashCode((Surr, Surr) obj)
+                => HashCode.Combine(RuntimeHelpers.GetHashCode(obj.Item1), RuntimeHelpers.GetHashCode(obj.Item2));
+        }
+
         public static bool operator <=(Surr a, Surr b)
         {
-            // PURIST: no Dyad fast path — all comparisons go through Conway's recursive definition.
+            if (ReferenceEquals(a, b)) return true;
+
+            var key = (a, b);
+            if (LeqCache.TryGetValue(key, out var cached)) return cached;
+
+            // Conway's recursive definition:
             // a <= b iff !(exists x in a.left: b <= x) && !(exists y in b.right: y <= a)
             bool leftHasGe = (a.leftInf != null && a.leftInf.HasElementGreaterOrEqual(b))
                           || Safe(a.left).Any(x => b <= x);
-            if (leftHasGe) return false;
 
-            bool rightHasLe = (b.rightInf != null && b.rightInf.HasElementLessOrEqual(a))
-                           || Safe(b.right).Any(x => x <= a);
-            return !rightHasLe;
+            bool result;
+            if (leftHasGe)
+                result = false;
+            else
+            {
+                bool rightHasLe = (b.rightInf != null && b.rightInf.HasElementLessOrEqual(a))
+                              || Safe(b.right).Any(x => x <= a);
+                result = !rightHasLe;
+            }
+
+            LeqCache[key] = result;
+            return result;
         }
 
         public static bool operator >=(Surr a, Surr b) => b <= a;
@@ -115,7 +143,7 @@ namespace Surreal
                 var left2 = Safe(a.left).Select(x => b + x);
                 var right1 = Safe(b.right).Select(y => a + y);
                 var right2 = Safe(a.right).Select(x => b + x);
-                return new Surr(left1.Concat(left2).ToList(), right1.Concat(right2).ToList(), raw: false);
+                return new Surr(left1.Concat(left2).ToList(), right1.Concat(right2).ToList(), raw: true);
             }
 
             // Transfinite path: construct surreal with shifted infinite sets

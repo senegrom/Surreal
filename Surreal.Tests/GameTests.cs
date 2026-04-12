@@ -56,12 +56,12 @@ namespace Surreal.Tests
             Assert.True(Surr.Down < 0);
         }
 
-        [Fact(Skip = "Deep game comparison: ↑+↓ produces correct structure but recursive <= doesn't verify equality with * yet")]
-        public void Up_Plus_Down_Equals_Star()
+        [Fact]
+        public void Up_Plus_Down_Equals_Zero()
         {
-            // ↑ + ↓ = * (up + down = star)
+            // ↑ + ↓ = 0 (↓ = -↑, so ↑ + (-↑) = 0)
             var result = Surr.Up + Surr.Down;
-            Assert.True(result == Surr.Star);
+            Assert.True(result == 0);
         }
 
         [Fact]

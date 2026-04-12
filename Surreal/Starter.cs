@@ -106,10 +106,13 @@ namespace Surreal
             Console.WriteLine($"  product + 25 = {foilProduct + new Surr(25)}");
             Console.WriteLine($"  == ω: {(foilProduct + new Surr(25)) == w}");
 
-            Console.WriteLine("↑+↓ test:");
-            var upDown = Surr.Up + Surr.Down;
-            Console.WriteLine($"  ↑+↓ <= * : {upDown <= Surr.Star}");
-            Console.WriteLine($"  * <= ↑+↓ : {Surr.Star <= upDown}");
+            Console.WriteLine("Game sub-tests:");
+            Console.WriteLine($"  ↑+* = *2 : {(Surr.Up + Surr.Star) == Surr.Nimber(2)}");
+            Console.WriteLine($"  *+↓ == ↓+* : {(Surr.Star + Surr.Down) == (Surr.Down + Surr.Star)}");
+            Console.WriteLine($"  ↑+↓ <= 0 : {(Surr.Up + Surr.Down) <= 0}");
+            Console.WriteLine($"  0 <= ↑+↓ : {0 <= (Surr.Up + Surr.Down)}");
+            Console.WriteLine($"  ↑+↓ <= * : {(Surr.Up + Surr.Down) <= Surr.Star}");
+            Console.WriteLine($"  * <= ↑+↓ : {Surr.Star <= (Surr.Up + Surr.Down)}");
             Console.Out.Flush();
             Console.WriteLine($"swMinus.IsFinite: {swMinus._symbolicTerms != null}");
             Console.WriteLine($"swPlus.IsFinite: {swPlus._symbolicTerms != null}");
