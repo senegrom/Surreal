@@ -161,6 +161,48 @@ namespace Surreal
             for (int i = 0; i < n; i++) options[i] = Nimber(i);
             return new Surr(options, options);
         }
+
+        /// <summary>
+        /// Nim product of two nimbers: *a ⊗ *b = *(NimProduct(a,b)).
+        /// Uses the recursive definition:
+        ///   a ⊗ b = mex({(a ⊗ b') ⊕ (a' ⊗ b) ⊕ (a' ⊗ b') : 0 ≤ a' &lt; a, 0 ≤ b' &lt; b})
+        /// where ⊕ is XOR (nim-addition).
+        /// </summary>
+        public static int NimProduct(int a, int b)
+        {
+            if (a <= 1 || b <= 1) return a * b;
+            if (_nimProdCache.TryGetValue((a, b), out var cached)) return cached;
+
+            var reachable = new HashSet<int>();
+            for (int ap = 0; ap < a; ap++)
+                for (int bp = 0; bp < b; bp++)
+                    reachable.Add(NimProduct(a, bp) ^ NimProduct(ap, b) ^ NimProduct(ap, bp));
+
+            int mex = 0;
+            while (reachable.Contains(mex)) mex++;
+
+            _nimProdCache[(a, b)] = mex;
+            _nimProdCache[(b, a)] = mex; // commutative
+            return mex;
+        }
+
+        private static readonly Dictionary<(int, int), int> _nimProdCache = new();
+
+        /// <summary>Multiply two nimbers as surreals: Nimber(a) ⊗ Nimber(b) = Nimber(NimProduct(a,b)).</summary>
+        public static Surr NimMultiply(Surr a, Surr b)
+        {
+            // Extract nimber values — find n such that a == Nimber(n)
+            int na = -1, nb = -1;
+            for (int i = 0; i <= 16; i++)
+            {
+                if (na < 0 && a == Nimber(i)) na = i;
+                if (nb < 0 && b == Nimber(i)) nb = i;
+                if (na >= 0 && nb >= 0) break;
+            }
+            if (na < 0 || nb < 0)
+                throw new System.InvalidOperationException("NimMultiply requires nimber operands");
+            return Nimber(NimProduct(na, nb));
+        }
         #endregion
     }
 }
