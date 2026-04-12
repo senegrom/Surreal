@@ -18,7 +18,7 @@ From positive infinitesimals (1/ω) through all real numbers (rational, irration
 ```bash
 dotnet build
 dotnet run           # runs Starter.cs demo
-dotnet test          # runs 168 tests
+dotnet test          # runs 200 tests
 ```
 
 ## Usage
@@ -60,6 +60,25 @@ Console.WriteLine(Surr.SqrtOmega * Surr.SqrtOmega == w);  // True
 var eps = Surr.InverseOmega;          // 1/ω = {0|1,1/2,1/4,...}
 Console.WriteLine(eps > 0);           // True
 Console.WriteLine(eps < quarter);     // True (smaller than any positive real)
+
+// Division
+Console.WriteLine(new Surr(1) / new Surr(3));         // 1/3
+Console.WriteLine(Surr.FromSqrt(8) / Surr.FromSqrt(2)); // 2 (= √4)
+Console.WriteLine(Surr.Omega / 3);                     // ω/3
+
+// Combinatorial games (non-numeric surreals)
+var star = Surr.Star;                 // * = {0|0}
+Console.WriteLine(star.IsNumeric);    // False
+Console.WriteLine(star <= 0);         // False (fuzzy with 0!)
+Console.WriteLine(star >= 0);         // False
+Console.WriteLine(star + star == 0);  // True (* + * = 0)
+Console.WriteLine(Surr.Up > 0);      // True (↑ is positive infinitesimal game)
+Console.WriteLine(Surr.Down < 0);    // True
+
+// Nimbers (Sprague-Grundy values)
+var n2 = Surr.Nimber(2);             // *2 = {0,*|0,*}
+Console.WriteLine(n2 != star);       // True (*2 ≠ *)
+Console.WriteLine(n2 + n2 == 0);     // True (*n + *n = 0)
 
 // Algebraic identities work across number types
 var sw = Surr.SqrtOmega;
@@ -108,8 +127,9 @@ Generators use a pluggable predicate ("is this dyadic below my target?") enablin
 
 | Operation | Finite numbers | Non-finite numbers |
 |-----------|---------------|-------------------|
-| `+`, `-` | Conway formula + auto-simplify + memoization | TransfiniteAdd with sampled cross-terms |
+| `+`, `-` | Conway formula + auto-simplify + memoization | TransfiniteAdd with sampled cross-terms + symbolic sum decomposition |
 | `*` | Conway formula + auto-simplify + memoization | Algebraic tag dispatch (√n·√m=√(nm), ω·ω=ω²) + FOIL expansion for symbolic sums |
+| `/` | Algebraic: dyadic/dyadic, rational/rational, √n/√m, ω/n | General Conway inverse not yet implemented |
 | Negation | Swap and negate L/R | Propagates symbolic terms |
 | Simplify | Evaluate to dyadic rational, reconstruct canonical form | Identity (no-op) |
 
@@ -134,6 +154,8 @@ Surreal.Tests/
 ├── TransfiniteTests.cs  ω, ω±n, ω/2, √ω, 1/ω, difference of squares identity
 ├── OmegaPowerTests.cs   ω², ω^ω, n·ω, full ordering chain
 ├── PropertyTests.cs     Algebraic properties: distributivity, inverses, associativity
+├── DivisionTests.cs     Integer, rational, sqrt, transfinite division
+├── GameTests.cs         *, ↑, ↓, nimbers, game addition, fuzzy comparisons
 ├── InfiniteSetEqualityTests.cs   {2,4,6,...|}=ω, {0|1/primes}=1/ω
 └── CustomInfiniteSets.cs         Test-specific IInfiniteSet implementations
 ```

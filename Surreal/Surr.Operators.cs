@@ -78,10 +78,12 @@ namespace Surreal
             if (a.IsZero) return b;
             if (b.IsZero) return a;
 
-            // Fast path: both finite dyadics
+            // Fast path: both finite numeric dyadics
             if (a.IsFinite && b.IsFinite)
             {
-                var key = (Evaluate(a), Evaluate(b));
+                var av = TryEvaluate(a); var bv = TryEvaluate(b);
+                if (av is null || bv is null) goto nonFinite; // game or contains transfinite
+                var key = (av.Value, bv.Value);
                 if (AddCache.TryGetValue(key, out var cached)) return cached;
 
                 var left1 = Safe(b.left).Select(y => a + y);
@@ -96,6 +98,7 @@ namespace Surreal
                 return result;
             }
 
+            nonFinite:
             // Rational path: if both have known rational/dyadic values, sum the rationals.
             var sumRational = TryRationalSum(a, b);
             if (sumRational is not null) return sumRational;
@@ -568,11 +571,39 @@ namespace Surreal
                 }
             }
 
-            // Sum remaining products
-            Surr sum = Zero;
+            // Sum remaining products: separate transfinite and finite, combine directly
+            Surr transfiniteSum = Zero;
+            long finiteNum = 0, finiteDen = 1;
+
             foreach (var (value, negate) in products)
-                sum = negate ? sum - value : sum + value;
-            return sum;
+            {
+                var val = TryEvaluate(value);
+                if (val.HasValue)
+                {
+                    long fDen = 1L << val.Value.Exp;
+                    long sign = negate ? -1 : 1;
+                    finiteNum = finiteNum * fDen + sign * val.Value.Num * finiteDen;
+                    finiteDen *= fDen;
+                    long g = Gcd(System.Math.Abs(finiteNum), finiteDen);
+                    if (g > 0) { finiteNum /= g; finiteDen /= g; }
+                }
+                else
+                {
+                    transfiniteSum = negate ? transfiniteSum - value : transfiniteSum + value;
+                }
+            }
+
+            // Combine: transfinite + finite
+            if (finiteNum == 0) return transfiniteSum;
+            if (transfiniteSum.IsZero)
+                return (finiteDen & (finiteDen - 1)) == 0
+                    ? Dyadic(finiteNum, BitOperations.TrailingZeroCount((ulong)finiteDen))
+                    : FromRational(finiteNum, finiteDen);
+
+            var finiteVal = (finiteDen & (finiteDen - 1)) == 0
+                ? Dyadic(finiteNum, BitOperations.TrailingZeroCount((ulong)finiteDen))
+                : FromRational(finiteNum, finiteDen);
+            return transfiniteSum + finiteVal;
         }
 
         /// <summary>√(n·ω) — transfinite surreal, tagged for algebraic manipulation.</summary>

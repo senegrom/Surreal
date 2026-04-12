@@ -28,7 +28,7 @@ namespace Surreal.Tests
             Assert.True(Surr.Star == star2);
         }
 
-        [Fact(Skip = "Game addition needs non-simplifying path")]
+        [Fact]
         public void Star_Plus_Star_Equals_Zero()
         {
             // * + * = 0 (star is its own negative)
@@ -56,7 +56,7 @@ namespace Surreal.Tests
             Assert.True(Surr.Down < 0);
         }
 
-        [Fact(Skip = "Game addition needs non-simplifying path")]
+        [Fact(Skip = "Complex game addition: ↑+↓ produces deep structure")]
         public void Up_Plus_Down_Equals_Star()
         {
             // ↑ + ↓ = * (up + down = star)
@@ -100,13 +100,13 @@ namespace Surreal.Tests
             Assert.False(n2 >= 0);
         }
 
-        [Fact(Skip = "Game comparison needs work")]
+        [Fact]
         public void Nimber_2_Not_Equal_Star()
         {
             Assert.True(Surr.Nimber(2) != Surr.Star);
         }
 
-        [Fact(Skip = "Game addition needs non-simplifying path")]
+        [Fact]
         public void Nimber_Self_Sum_Is_Zero()
         {
             // In Nim arithmetic: *n + *n = 0 for all n

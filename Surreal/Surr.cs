@@ -43,20 +43,17 @@ namespace Surreal
 
         public Surr(IReadOnlyCollection<Surr> left, IReadOnlyCollection<Surr> right)
         {
+            // Dedup only (no ordering filter — games may have fuzzy/incomparable elements)
             var tempLeft = new List<Surr>();
             foreach (var j in left)
-            {
-                if (!tempLeft.Any(x => x == j) && tempLeft.All(i => j >= i))
+                if (!tempLeft.Any(x => x == j))
                     tempLeft.Add(j);
-            }
             this.left = tempLeft;
 
             var tempRight = new List<Surr>();
             foreach (var j in right)
-            {
-                if (!tempRight.Any(x => x == j) && tempRight.All(i => j <= i))
+                if (!tempRight.Any(x => x == j))
                     tempRight.Add(j);
-            }
             this.right = tempRight;
         }
 
