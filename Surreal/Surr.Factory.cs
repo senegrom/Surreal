@@ -228,18 +228,55 @@ namespace Surreal
             OmegaMinusNaturals.Instance, null,
             "ω/2");
 
-        /// <summary>ε₀ (epsilon-naught) — the first fixed point of x → ω^x. Greater than all ω^n.</summary>
+        /// <summary>ε₀ — first fixed point of x → ω^x. ω^ε₀ = ε₀.</summary>
         public static readonly Surr EpsilonNaught = new(
             null, new List<Surr> {
-                Omega,
-                OmegaSquared,
-                OmegaToOmega,
+                Omega, OmegaSquared, OmegaToOmega,
                 OmegaPowers.Instance.Get(3),
                 OmegaPowers.Instance.Get(4),
                 OmegaPowers.Instance.Get(5)
-            },
-            null, null,
-            "ε₀");
+            }, null, null, "ε₀");
+
+        /// <summary>ε₁ — second fixed point of x → ω^x. Greater than ε₀.</summary>
+        public static readonly Surr Epsilon1 = new(
+            null, new List<Surr> {
+                EpsilonNaught,
+                Pow(Omega, EpsilonNaught),  // = ε₀ (but structurally a call)
+            }, null, null, "ε₁");
+
+        /// <summary>
+        /// ε_n — the nth epsilon number (fixed point of x → ω^x).
+        /// ε₀ &lt; ε₁ &lt; ε₂ &lt; ...
+        /// </summary>
+        public static Surr Epsilon(int n)
+        {
+            if (n == 0) return EpsilonNaught;
+            if (n == 1) return Epsilon1;
+            // ε_n = {ε₀, ε₁, ..., ε_{n-1} | }
+            var options = new List<Surr>();
+            for (int i = 0; i < n; i++) options.Add(Epsilon(i));
+            return new Surr(null, options, null, null, $"ε_{n}");
+        }
+
+        /// <summary>ζ₀ — first fixed point of x → ε_x. Greater than all ε_n.</summary>
+        public static readonly Surr Zeta0 = new(
+            null, new List<Surr> {
+                EpsilonNaught, Epsilon(1), Epsilon(2), Epsilon(3), Epsilon(4)
+            }, null, null, "ζ₀");
+
+        /// <summary>
+        /// Γ₀ (Gamma-naught) — first fixed point of the Veblen hierarchy.
+        /// The Feferman-Schütte ordinal. Greater than all ζ_n, all ε_n.
+        /// </summary>
+        public static readonly Surr Gamma0 = new(
+            null, new List<Surr> {
+                Zeta0,
+                new Surr(null, new List<Surr> { Zeta0 }, null, null, "ζ₁"),
+                new Surr(null, new List<Surr> {
+                    Zeta0,
+                    new Surr(null, new List<Surr> { Zeta0 }, null, null, "ζ₁")
+                }, null, null, "ζ₂"),
+            }, null, null, "Γ₀");
 
         /// <summary>
         /// √ω — the surreal whose square is ω. Greater than all finite integers, less than ω.

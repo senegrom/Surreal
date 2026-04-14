@@ -722,9 +722,14 @@ namespace Surreal
             if (baseVal._displayName == "ω" && exponent._displayName == "ω")
                 return OmegaToOmega;
 
-            // ω ^ ε₀ = ε₀ (defining property of epsilon-naught)
-            if (baseVal._displayName == "ω" && exponent._displayName == "ε₀")
-                return EpsilonNaught;
+            // ω ^ ε_n = ε_n (defining property of epsilon numbers)
+            if (baseVal._displayName == "ω" && exponent._displayName != null
+                && exponent._displayName.StartsWith("ε"))
+                return exponent;
+
+            // ω ^ ζ₀ = ζ₀, ω ^ Γ₀ = Γ₀ (fixed points of higher hierarchies)
+            if (baseVal._displayName == "ω" && exponent._displayName is "ζ₀" or "Γ₀")
+                return exponent;
 
             // n ^ ω for finite n ≥ 2: sup{n^k : k ∈ ℕ} = ω
             if (bv.HasValue && bv.Value.Exp == 0 && bv.Value.Num >= 2 && exponent._displayName == "ω")
