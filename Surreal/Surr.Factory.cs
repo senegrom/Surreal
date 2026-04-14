@@ -278,6 +278,18 @@ namespace Surreal
                 }, null, null, "ζ₂"),
             }, null, null, "Γ₀");
 
+        /// <summary>1/ε₀ — infinitesimal smaller than 1/ω. Positive but less than all 1/ω^n.</summary>
+        public static readonly Surr InverseEpsilon0 = new(
+            null, new List<Surr> { Zero },
+            null, new List<Surr> { InverseOmega },
+            "1/ε₀");
+
+        /// <summary>1/Γ₀ — infinitesimal smaller than 1/ε₀. Incredibly tiny but still positive.</summary>
+        public static readonly Surr InverseGamma0 = new(
+            null, new List<Surr> { Zero },
+            null, new List<Surr> { InverseEpsilon0 },
+            "1/Γ₀");
+
         /// <summary>
         /// √ω — the surreal whose square is ω. Greater than all finite integers, less than ω.
         /// Constructed as {naturals | ω, ω/2, ω/4, ω/8, ...} — proper right options via division.
@@ -287,6 +299,18 @@ namespace Surreal
             _omegaPowersOfHalf, null,
             "√ω");
         #endregion
+
+        /// <summary>log(ω) — greater than all finite integers, less than √ω &lt; ω.</summary>
+        public static readonly Surr LogOmega = new(
+            NaturalNumbers.Instance, null,
+            null, new List<Surr> { SqrtOmega },
+            "log(ω)");
+
+        /// <summary>log(Γ₀) — greater than log(ω), less than Γ₀.</summary>
+        public static readonly Surr LogGamma0 = new(
+            NaturalNumbers.Instance, new List<Surr> { LogOmega },
+            null, new List<Surr> { Gamma0 },
+            "log(Γ₀)");
 
         #region Games (non-numeric surreals)
 
