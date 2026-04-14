@@ -300,6 +300,18 @@ namespace Surreal
             "√ω");
         #endregion
 
+        /// <summary>√Γ₀ — between ζ₀ and Γ₀. (√Γ₀)² = Γ₀.</summary>
+        public static readonly Surr SqrtGamma0 = new(
+            NaturalNumbers.Instance, new List<Surr> { EpsilonNaught, Zeta0 },
+            null, new List<Surr> { Gamma0 },
+            "√Γ₀");
+
+        /// <summary>1/√Γ₀ — infinitesimal between 1/Γ₀ and 1/ε₀.</summary>
+        public static readonly Surr InverseSqrtGamma0 = new(
+            null, new List<Surr> { Zero, InverseGamma0 },
+            null, new List<Surr> { InverseEpsilon0 },
+            "1/√Γ₀");
+
         /// <summary>log(ω) — greater than all finite integers, less than √ω &lt; ω.</summary>
         public static readonly Surr LogOmega = new(
             NaturalNumbers.Instance, null,
