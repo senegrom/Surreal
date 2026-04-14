@@ -689,6 +689,47 @@ namespace Surreal
 
         public static Surr operator *(Surr a, long b) => a * new Surr(b);
         public static Surr operator *(long a, Surr b) => new Surr(a) * b;
+
+        /// <summary>
+        /// Surreal exponentiation. Handles known algebraic cases:
+        /// integer^integer, ω^n (omega powers), ω^ε₀ = ε₀.
+        /// General case not yet implemented.
+        /// </summary>
+        public static Surr Pow(Surr baseVal, Surr exponent)
+        {
+            // 0^anything = 0 (for positive exponent), x^0 = 1
+            if (exponent.IsZero) return new Surr(1);
+            if (baseVal.IsZero) return Zero;
+
+            var bv = TryEvaluate(baseVal);
+            var ev = TryEvaluate(exponent);
+
+            // Integer ^ integer
+            if (bv.HasValue && ev.HasValue && bv.Value.Exp == 0 && ev.Value.Exp == 0 && ev.Value.Num >= 0)
+            {
+                long result = 1;
+                for (long i = 0; i < ev.Value.Num; i++) result *= bv.Value.Num;
+                return new Surr(result);
+            }
+
+            // ω ^ n = OmegaPowers
+            if (baseVal._displayName == "ω" && ev.HasValue && ev.Value.Exp == 0 && ev.Value.Num > 0)
+                return OmegaPowers.Instance.Get((int)ev.Value.Num);
+
+            // ω ^ ω = ω^ω
+            if (baseVal._displayName == "ω" && exponent._displayName == "ω")
+                return OmegaToOmega;
+
+            // ω ^ ε₀ = ε₀ (defining property of epsilon-naught)
+            if (baseVal._displayName == "ω" && exponent._displayName == "ε₀")
+                return EpsilonNaught;
+
+            // ε₀ ^ ω: not equal to ε₀ — it's much larger
+            // But ω ^ (ω ^ ε₀) = ω ^ ε₀ = ε₀ (since ω^ε₀ = ε₀)
+
+            throw new System.NotImplementedException(
+                $"General exponentiation not yet implemented for {baseVal} ^ {exponent}");
+        }
         #endregion
     }
 }

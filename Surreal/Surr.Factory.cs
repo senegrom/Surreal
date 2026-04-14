@@ -104,16 +104,29 @@ namespace Surreal
             (midNum, exp) => midNum < Math.E * (1L << exp), 2, "e");
 
         /// <summary>
-        /// Birthday of a surreal: the "day" it was first born.
-        /// Day 0: 0. Day n: integer n or dyadic with denominator 2^n. Returns -1 if unknown.
+        /// Birthday of a surreal: the ordinal "day" it was first born.
+        /// birthday(s) = 1 + max(birthday(x) for x in s.left ∪ s.right).
+        /// Returns -1 for surreals with infinite sets (born on day ω or later).
         /// </summary>
         public static int Birthday(Surr s)
         {
-            var val = TryEvaluate(s);
-            if (!val.HasValue) return -1;
-            if (val.Value.Num == 0) return 0;
-            if (val.Value.Exp == 0) return (int)Math.Abs(val.Value.Num);
-            return (int)Math.Abs(val.Value.Num); // approx: |numerator| in simplest form
+            if (s.leftInf != null || s.rightInf != null) return -1;
+            if (s.IsZero) return 0;
+
+            int maxChild = -1;
+            foreach (var x in Safe(s.left))
+            {
+                int b = Birthday(x);
+                if (b < 0) return -1;
+                if (b > maxChild) maxChild = b;
+            }
+            foreach (var x in Safe(s.right))
+            {
+                int b = Birthday(x);
+                if (b < 0) return -1;
+                if (b > maxChild) maxChild = b;
+            }
+            return maxChild + 1;
         }
 
         /// <summary>

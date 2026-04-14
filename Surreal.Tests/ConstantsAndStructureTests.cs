@@ -69,7 +69,29 @@ namespace Surreal.Tests
         [Fact]
         public void Birthday_Half()
         {
-            Assert.Equal(1, Surr.Birthday(Surr.Half));
+            // 1/2 = {0|1}, born day after max(birthday(0), birthday(1)) = day 2
+            Assert.Equal(2, Surr.Birthday(Surr.Half));
+        }
+
+        [Fact]
+        public void Birthday_Quarter()
+        {
+            // 1/4 = {0|1/2}, born day 3
+            Assert.Equal(3, Surr.Birthday(Surr.Dyadic(1, 2)));
+        }
+
+        [Fact]
+        public void Birthday_ThreeQuarters()
+        {
+            // 3/4 = {1/2|1}, born day 3
+            Assert.Equal(3, Surr.Birthday(Surr.Dyadic(3, 2)));
+        }
+
+        [Fact]
+        public void Birthday_ThreeHalves()
+        {
+            // 3/2 = {1|2}, born day 3
+            Assert.Equal(3, Surr.Birthday(Surr.FromRational(3, 2)));
         }
 
         [Fact]
@@ -106,5 +128,54 @@ namespace Surreal.Tests
         {
             Assert.Null(Surr.SignExpansion(Surr.Omega));
         }
+
+        #region Exponentiation and ε₀
+        [Theory]
+        [InlineData(2, 3, 8)]
+        [InlineData(3, 2, 9)]
+        [InlineData(5, 0, 1)]
+        [InlineData(1, 100, 1)]
+        public void Pow_Integer(long b, long e, long expected)
+        {
+            Assert.True(Surr.Pow(new Surr(b), new Surr(e)) == expected);
+        }
+
+        [Fact]
+        public void Pow_Omega_Squared()
+        {
+            Assert.True(Surr.Pow(Surr.Omega, new Surr(2)) == Surr.OmegaSquared);
+        }
+
+        [Fact]
+        public void Pow_Omega_To_Omega()
+        {
+            Assert.True(Surr.Pow(Surr.Omega, Surr.Omega) == Surr.OmegaToOmega);
+        }
+
+        [Fact]
+        public void Pow_Omega_To_EpsilonNaught_Equals_EpsilonNaught()
+        {
+            // ω^ε₀ = ε₀ — the defining property of epsilon-naught
+            Assert.True(Surr.Pow(Surr.Omega, Surr.EpsilonNaught) == Surr.EpsilonNaught);
+        }
+
+        [Fact]
+        public void Pow_Omega_3()
+        {
+            var w3 = Surr.Pow(Surr.Omega, new Surr(3));
+            Assert.True(w3 > Surr.OmegaSquared);
+            Assert.True(w3 > Surr.Omega);
+        }
+
+        [Fact]
+        public void EpsilonNaught_Fixed_Point()
+        {
+            // ε₀ is a fixed point of x → ω^x
+            // So ω^(ω^ε₀) = ω^ε₀ = ε₀
+            var inner = Surr.Pow(Surr.Omega, Surr.EpsilonNaught);
+            var outer = Surr.Pow(Surr.Omega, inner);
+            Assert.True(outer == Surr.EpsilonNaught);
+        }
+        #endregion
     }
 }
