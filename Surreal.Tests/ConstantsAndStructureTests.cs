@@ -171,10 +171,49 @@ namespace Surreal.Tests
         public void EpsilonNaught_Fixed_Point()
         {
             // ε₀ is a fixed point of x → ω^x
-            // So ω^(ω^ε₀) = ω^ε₀ = ε₀
             var inner = Surr.Pow(Surr.Omega, Surr.EpsilonNaught);
             var outer = Surr.Pow(Surr.Omega, inner);
             Assert.True(outer == Surr.EpsilonNaught);
+        }
+
+        [Theory]
+        [InlineData(2)]
+        [InlineData(3)]
+        [InlineData(10)]
+        public void Pow_FiniteInteger_To_Omega_Equals_Omega(int n)
+        {
+            // n^ω = ω for n ≥ 2 (sup of all finite powers = first transfinite)
+            Assert.True(Surr.Pow(new Surr(n), Surr.Omega) == Surr.Omega);
+        }
+
+        [Fact]
+        public void Pow_One_To_Omega_Equals_One()
+        {
+            Assert.True(Surr.Pow(new Surr(1), Surr.Omega) == 1);
+        }
+
+        [Fact]
+        public void FixedPoint_XToOmega_OnlyTrivial()
+        {
+            // x → x^ω has only trivial fixed points: 0 and 1
+            // For all n ≥ 2: n^ω = ω ≠ n (diverges away)
+            Assert.True(Surr.Pow(Surr.Zero, Surr.Omega) == 0);  // 0^ω = 0 ✓
+            Assert.True(Surr.Pow(new Surr(1), Surr.Omega) == 1); // 1^ω = 1 ✓
+            Assert.True(Surr.Pow(new Surr(2), Surr.Omega) == Surr.Omega); // 2^ω = ω ≠ 2
+            Assert.True(Surr.Pow(new Surr(2), Surr.Omega) != 2);
+        }
+
+        [Fact]
+        public void Iteration_XToOmega_Diverges()
+        {
+            // Starting from 2: 2 → 2^ω = ω → ω^ω → (ω^ω)^ω = ...
+            // Each step grows, never returns to the start
+            var x = new Surr(2);
+            var x1 = Surr.Pow(x, Surr.Omega);        // = ω
+            Assert.True(x1 == Surr.Omega);
+            var x2 = Surr.Pow(x1, Surr.Omega);       // = ω^ω
+            Assert.True(x2 == Surr.OmegaToOmega);
+            Assert.True(x2 > x1);                     // strictly increasing
         }
         #endregion
     }

@@ -697,9 +697,11 @@ namespace Surreal
         /// </summary>
         public static Surr Pow(Surr baseVal, Surr exponent)
         {
-            // 0^anything = 0 (for positive exponent), x^0 = 1
+            // x^0 = 1, 0^x = 0, 1^x = 1
             if (exponent.IsZero) return new Surr(1);
             if (baseVal.IsZero) return Zero;
+            var bvCheck = TryEvaluate(baseVal);
+            if (bvCheck.HasValue && bvCheck.Value.Num == 1 && bvCheck.Value.Exp == 0) return new Surr(1);
 
             var bv = TryEvaluate(baseVal);
             var ev = TryEvaluate(exponent);
@@ -724,8 +726,18 @@ namespace Surreal
             if (baseVal._displayName == "ω" && exponent._displayName == "ε₀")
                 return EpsilonNaught;
 
-            // ε₀ ^ ω: not equal to ε₀ — it's much larger
-            // But ω ^ (ω ^ ε₀) = ω ^ ε₀ = ε₀ (since ω^ε₀ = ε₀)
+            // n ^ ω for finite n ≥ 2: sup{n^k : k ∈ ℕ} = ω
+            if (bv.HasValue && bv.Value.Exp == 0 && bv.Value.Num >= 2 && exponent._displayName == "ω")
+                return Omega;
+
+            // ω ^ ω^n: produces next omega tower level
+            // (ω^ω)^ω = ω^(ω²) via ordinal: (α^β)^γ = α^(β·γ) and ω·ω = ω²
+            if (baseVal._displayName == "ω^ω" && exponent._displayName == "ω")
+                return Pow(Omega, OmegaSquared);
+
+            // ω ^ ω² etc.
+            if (baseVal._displayName == "ω" && exponent._displayName == "ω²")
+                return OmegaPowers.Instance.Get(3); // ω^(ω²) represented as ω↑↑level
 
             throw new System.NotImplementedException(
                 $"General exponentiation not yet implemented for {baseVal} ^ {exponent}");
