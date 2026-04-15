@@ -25,13 +25,13 @@ namespace Surreal
 
         public bool HasElementGreaterOrEqual(Surr target)
         {
-            // "Exists -x ≥ target where x ∈ Inner" ↔ "Exists x ≤ -target"
             var val = Surr.TryEvaluate(target);
             if (val.HasValue)
                 return Inner.HasElementLessOrEqual(Surr.Dyadic(-val.Value.Num, val.Value.Exp));
-            // For non-evaluable target: conservative answer based on inner set properties
-            // If inner has elements ≤ everything (like NaturalNumbers has 0), negated has 0 too
-            return Inner.HasElementLessOrEqual(Surr.Zero); // conservative: negated set contains -0=0
+            // Non-evaluable: check negated samples concretely
+            foreach (var s in SampleElements(5))
+                if (target <= s) return true;
+            return false;
         }
 
         public bool HasElementLessOrEqual(Surr target)
@@ -39,7 +39,9 @@ namespace Surreal
             var val = Surr.TryEvaluate(target);
             if (val.HasValue)
                 return Inner.HasElementGreaterOrEqual(Surr.Dyadic(-val.Value.Num, val.Value.Exp));
-            return Inner.HasElementGreaterOrEqual(Surr.Zero);
+            foreach (var s in SampleElements(5))
+                if (s <= target) return true;
+            return false;
         }
 
         public Surr[] SampleElements(int count)
@@ -227,6 +229,41 @@ namespace Surreal
         }
     }
 
+    /// <summary>The set {base+0, base+1, base+2, ...} for a transfinite base.</summary>
+    public sealed class TransfinitePlusNaturals : IInfiniteSet
+    {
+        private readonly Surr _base;
+        public TransfinitePlusNaturals(Surr baseVal) { _base = baseVal; }
+        public string DisplayName => $"{_base}+n";
+
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            var val = Surr.TryEvaluate(target);
+            if (val.HasValue) return true; // base > any finite
+            // For transfinite target: check if target ≤ base (base+0 = base)
+            if (target <= _base) return true;
+            // Check if target has symbolic terms suggesting base+k form
+            if (target._symbolicTerms != null)
+            {
+                // If target is base+constant, our set has base+(constant+1) which is ≥
+                foreach (var (f, _) in target._symbolicTerms)
+                    if (Surr.TryEvaluate(f) is null && _base <= f) return true;
+            }
+            return false;
+        }
+
+        public bool HasElementLessOrEqual(Surr target)
+        {
+            return _base <= target;
+        }
+
+        public Surr[] SampleElements(int count)
+        {
+            // Return just the base to avoid recursion through TransfiniteAdd
+            return new[] { _base };
+        }
+    }
+
     /// <summary>The set {0, ω, 2ω, 3ω, ...} — multiples of ω. Used as left options of ω².</summary>
     public sealed class OmegaMultiples : IInfiniteSet
     {
@@ -241,12 +278,14 @@ namespace Surreal
                 if (_cache.Count == 0)
                     _cache.Add(Surr.Zero);
                 else
-                    // n·ω = (n-1)·ω + ω, represented as {(n-1)·ω, naturals | }
-                    // with NaturalNumbers since n·ω > all finite integers
+                {
+                    var prev = _cache[^1];
+                    // n·ω = {(n-1)·ω+k : k ∈ ℕ | } — includes shifted naturals above prev
                     _cache.Add(new Surr(
-                        NaturalNumbers.Instance, new List<Surr> { _cache[^1] },
+                        new TransfinitePlusNaturals(prev), new List<Surr> { prev },
                         null, null,
                         $"{_cache.Count}ω"));
+                }
             }
             return _cache[n];
         }

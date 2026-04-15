@@ -34,7 +34,7 @@ namespace Surreal.Tests
             Assert.True(result > Surr.Omega);
         }
 
-        [Fact(Skip = "OmegaMultiples construction too coarse: 2ω needs {ω+n} left options")]
+        [Fact]
         public void TwoOmega_Greater_Than_Omega_Plus_100()
         {
             // 2ω > ω + 100
