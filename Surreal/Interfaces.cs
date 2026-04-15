@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Surreal
 {
@@ -7,8 +8,53 @@ namespace Surreal
         bool HasElementGreaterOrEqual(Surr target);
         bool HasElementLessOrEqual(Surr target);
         string DisplayName { get; }
-        /// <summary>Return a few concrete (dyadic) elements from this set for cross-term computation.</summary>
         Surr[] SampleElements(int count);
+    }
+
+    /// <summary>
+    /// Wraps any IInfiniteSet and negates all its elements.
+    /// If inner = {a,b,c,...} then NegatedSet = {-a,-b,-c,...}.
+    /// "Exists -x >= target" ↔ "Exists x <= -target" in the inner set.
+    /// </summary>
+    public sealed class NegatedSet : IInfiniteSet
+    {
+        public readonly IInfiniteSet Inner;
+        public NegatedSet(IInfiniteSet inner) { Inner = inner; }
+
+        public string DisplayName => $"-({Inner.DisplayName})";
+
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            // "Exists -x ≥ target where x ∈ Inner" ↔ "Exists x ≤ -target"
+            var val = Surr.TryEvaluate(target);
+            if (val.HasValue)
+                return Inner.HasElementLessOrEqual(Surr.Dyadic(-val.Value.Num, val.Value.Exp));
+            // For non-evaluable target: conservative answer based on inner set properties
+            // If inner has elements ≤ everything (like NaturalNumbers has 0), negated has 0 too
+            return Inner.HasElementLessOrEqual(Surr.Zero); // conservative: negated set contains -0=0
+        }
+
+        public bool HasElementLessOrEqual(Surr target)
+        {
+            var val = Surr.TryEvaluate(target);
+            if (val.HasValue)
+                return Inner.HasElementGreaterOrEqual(Surr.Dyadic(-val.Value.Num, val.Value.Exp));
+            return Inner.HasElementGreaterOrEqual(Surr.Zero);
+        }
+
+        public Surr[] SampleElements(int count)
+        {
+            var samples = Inner.SampleElements(count);
+            var result = new List<Surr>();
+            foreach (var s in samples)
+            {
+                var val = Surr.TryEvaluate(s);
+                if (val.HasValue)
+                    result.Add(Surr.Dyadic(-val.Value.Num, val.Value.Exp));
+                // Skip non-evaluable samples to avoid recursion
+            }
+            return result.ToArray();
+        }
     }
 
     public sealed class NaturalNumbers : IInfiniteSet

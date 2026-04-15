@@ -80,10 +80,31 @@ namespace Surreal
                     Safe(a.right).Select(x => -x).ToList(),
                     Safe(a.left).Select(x => -x).ToList(), raw: true).Simplify();
 
-            // For non-finite: construct negation and propagate symbolic terms
+            // For non-finite: negate structure.
+            // Use NegatedSet only for "simple" infinite sets (NaturalNumbers, OmegaMinusNaturals, etc.)
+            // For generator-based sets (DyadicApprox), swap left/right without wrapping to avoid
+            // infinite recursion in SampleElements.
+            // For generator-based surreals (rationals, sqrt): negate via the factory
+            var gen = GeneratorHelper.GetGenerator(a);
+            if (gen?.P != null)
+                return FromRational(-gen.P.Value, gen.Q.Value);
+            // Note: -√n does NOT go through FromPredicate — it preserves symbolic terms
+            // for FOIL expansion. The DyadicApprox sets are dropped but symbolic tracking still works.
+
+            // Wrap infinite sets in NegatedSet for proper negation.
+            // DyadicApprox sets: raw swap (NegatedSet causes recursion via SampleElements).
+            IInfiniteSet negLeftInf = null, negRightInf = null;
+            if (a.rightInf != null)
+                negLeftInf = a.rightInf is NegatedSet nr ? nr.Inner
+                    : (a.rightInf is DyadicApproxBelow or DyadicApproxAbove) ? a.rightInf  // raw swap
+                    : new NegatedSet(a.rightInf);
+            if (a.leftInf != null)
+                negRightInf = a.leftInf is NegatedSet nl ? nl.Inner
+                    : (a.leftInf is DyadicApproxBelow or DyadicApproxAbove) ? a.leftInf    // raw swap
+                    : new NegatedSet(a.leftInf);
             var neg = new Surr(
-                a.rightInf, Safe(a.right).Select(x => -x).ToList(),
-                a.leftInf, Safe(a.left).Select(x => -x).ToList());
+                negLeftInf, Safe(a.right).Select(x => -x).ToList(),
+                negRightInf, Safe(a.left).Select(x => -x).ToList());
             if (a._symbolicTerms != null)
             {
                 neg._symbolicTerms = new List<(Surr, bool)>();
@@ -293,6 +314,16 @@ namespace Surreal
                 foreach (var el in b.rightInf.SampleElements(3)) finiteRight.Add(a + el);
             if (a.rightInf != null)
                 foreach (var el in a.rightInf.SampleElements(3)) finiteRight.Add(el + b);
+
+            // When adding transfinite + positive: include the transfinite itself as a left option.
+            // This represents the chain: a + b has left option a + 0 = a (reachable since 0
+            // is eventually a left option of any positive surreal by taking left options repeatedly).
+            var bEval = TryEvaluate(b);
+            var aEval = TryEvaluate(a);
+            if (!a.IsFinite && bEval.HasValue && bEval.Value.Num > 0 && bEval.Value.Exp == 0)
+                finiteLeft.Add(a); // a + 0 = a, and 0 is reachable from positive b
+            if (!b.IsFinite && aEval.HasValue && aEval.Value.Num > 0 && aEval.Value.Exp == 0)
+                finiteLeft.Add(b);
 
             // Shifted infinite sets for NaturalNumbers
             if (a.leftInf is NaturalNumbers && TryGetRationalPQ(b, out var bp, out var bq))
