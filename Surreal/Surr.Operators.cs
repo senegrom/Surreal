@@ -217,7 +217,6 @@ namespace Surreal
         /// sum the finite parts, and rebuild. E.g., (ω - 25) + 25 → ω + 0 = ω.
         /// Only activates when at least one operand HAS symbolic terms (from TransfiniteAdd).
         /// </summary>
-        [System.ThreadStatic] private static bool _inSymbolicSum;
 
         private static Surr TrySymbolicSum(Surr a, Surr b)
         {
