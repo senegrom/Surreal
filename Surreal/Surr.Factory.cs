@@ -179,17 +179,17 @@ namespace Surreal
             long cur = target > 0 ? hi : lo;
             while (cur != target)
             {
-                long mid = (lo + hi) / 2;
                 if (target < cur)
                 {
                     signs.Append('-');
-                    hi = cur; cur = mid;
+                    hi = cur;
                 }
                 else
                 {
                     signs.Append('+');
-                    lo = cur; cur = mid;
+                    lo = cur;
                 }
+                cur = (lo + hi) / 2;
             }
             return signs.ToString();
         }
