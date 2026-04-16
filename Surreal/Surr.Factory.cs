@@ -99,6 +99,42 @@ namespace Surreal
                 "π");
         }
 
+        /// <summary>φ (golden ratio) ≈ 1.61803... = (1+√5)/2. Via Dedekind cut: mid² &lt; mid + 1.</summary>
+        public static Surr GoldenRatio() => FromPredicate(
+            (midNum, exp) => midNum * midNum < (midNum + (1L << exp)) * (1L << exp),
+            1, "φ");
+
+        /// <summary>
+        /// Classify a game's outcome: who wins with optimal play?
+        /// Positive = Left wins, Negative = Right wins, Zero = second player wins, Fuzzy = first player wins.
+        /// </summary>
+        public enum GameOutcome { Positive, Negative, Zero, Fuzzy }
+
+        public static GameOutcome Outcome(Surr g)
+        {
+            bool geZero = g >= 0;
+            bool leZero = g <= 0;
+            if (geZero && leZero) return GameOutcome.Zero;
+            if (geZero && !leZero) return GameOutcome.Positive;
+            if (!geZero && leZero) return GameOutcome.Negative;
+            return GameOutcome.Fuzzy;
+        }
+
+        /// <summary>Nim addition (XOR) of two nimbers as surreals.</summary>
+        public static Surr NimAdd(Surr a, Surr b)
+        {
+            int na = -1, nb = -1;
+            for (int i = 0; i <= 16; i++)
+            {
+                if (na < 0 && a == Nimber(i)) na = i;
+                if (nb < 0 && b == Nimber(i)) nb = i;
+                if (na >= 0 && nb >= 0) break;
+            }
+            if (na < 0 || nb < 0)
+                throw new System.InvalidOperationException("NimAdd requires nimber operands");
+            return Nimber(na ^ nb);
+        }
+
         /// <summary>e (Euler's number) ≈ 2.71828... via Dedekind cut.</summary>
         public static Surr E() => FromPredicate(
             (midNum, exp) => midNum < Math.E * (1L << exp), 2, "e");
