@@ -18,7 +18,7 @@ From negative transfinite ordinals through infinitesimals, reals (rational, irra
 ```bash
 dotnet build
 dotnet run           # runs Starter.cs demo
-dotnet test          # runs 312 tests
+dotnet test          # runs 375 tests
 ```
 
 ## Usage
