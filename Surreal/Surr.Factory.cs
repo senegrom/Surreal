@@ -135,6 +135,28 @@ namespace Surreal
             return Nimber(na ^ nb);
         }
 
+        /// <summary>Absolute value: |x| = x if x ≥ 0, -x otherwise.</summary>
+        public static Surr Abs(Surr x) => x >= 0 ? x : -x;
+
+        /// <summary>Maximum of two surreals.</summary>
+        public static Surr Max(Surr a, Surr b) => a >= b ? a : b;
+
+        /// <summary>Minimum of two surreals.</summary>
+        public static Surr Min(Surr a, Surr b) => a <= b ? a : b;
+
+        /// <summary>Whether a surreal is strictly between two bounds: lo &lt; x &lt; hi.</summary>
+        public static bool Between(Surr x, Surr lo, Surr hi) => x > lo && x < hi;
+
+        /// <summary>ln(2) ≈ 0.69315... via Dedekind cut.</summary>
+        public static Surr Ln2() => FromPredicate(
+            (midNum, exp) => midNum < Math.Log(2) * (1L << exp), 0, "ln2");
+
+        /// <summary>√3 convenience constant.</summary>
+        public static readonly Surr Sqrt3 = FromSqrt(3);
+
+        /// <summary>√5 convenience constant.</summary>
+        public static readonly Surr Sqrt5 = FromSqrt(5);
+
         /// <summary>e (Euler's number) ≈ 2.71828... via Dedekind cut.</summary>
         public static Surr E() => FromPredicate(
             (midNum, exp) => midNum < Math.E * (1L << exp), 2, "e");
