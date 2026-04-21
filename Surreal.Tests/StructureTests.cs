@@ -52,6 +52,30 @@ namespace Surreal.Tests
             // ↑ = {0|*} → day 2 (max(0,1)+1)
             Assert.Equal(2, Surr.Birthday(Surr.Up));
         }
+
+        [Fact]
+        public void IsNumeric_Numbers()
+        {
+            // All these are numbers (not fuzzy games)
+            Assert.True(new Surr(0).IsNumeric);
+            Assert.True(new Surr(42).IsNumeric);
+            Assert.True(Surr.Half.IsNumeric);
+            Assert.True(Surr.FromRational(1, 3).IsNumeric);
+            Assert.True(Surr.FromSqrt(2).IsNumeric);
+            Assert.True(Surr.Pi().IsNumeric);
+            Assert.True(Surr.Omega.IsNumeric);      // ω IS a number (transfinite)
+            Assert.True(Surr.InverseOmega.IsNumeric); // 1/ω IS a number (infinitesimal)
+            Assert.True(Surr.EpsilonNaught.IsNumeric);
+        }
+
+        [Fact]
+        public void IsNumeric_Games()
+        {
+            // Fuzzy games are NOT numeric
+            Assert.False(Surr.Star.IsNumeric);
+            Assert.False(Surr.Nimber(2).IsNumeric);
+            Assert.False(Surr.Nimber(3).IsNumeric);
+        }
         #endregion
 
         #region Sign expansion comprehensive
@@ -77,6 +101,14 @@ namespace Surreal.Tests
             Assert.Equal("+-+", Surr.SignExpansion(Surr.Dyadic(3, 2)));
             // -1/2: - (toward -1) then + (back to -1/2)
             Assert.Equal("-+", Surr.SignExpansion(Surr.Dyadic(-1, 1)));
+            // 1/4: + (to 1) - (to 1/2) - (to 1/4)
+            Assert.Equal("+--", Surr.SignExpansion(Surr.Dyadic(1, 2)));
+            // -1/4: - (to -1) + (to -1/2) + (to -1/4)
+            Assert.Equal("-++", Surr.SignExpansion(Surr.Dyadic(-1, 2)));
+            // -3/4: - (to -1) + (to -1/2) - (to -3/4)
+            Assert.Equal("-+-", Surr.SignExpansion(Surr.Dyadic(-3, 2)));
+            // 3/2: + + (to 2) - (to 3/2)
+            Assert.Equal("++-", Surr.SignExpansion(Surr.FromRational(3, 2)));
         }
 
         [Fact]

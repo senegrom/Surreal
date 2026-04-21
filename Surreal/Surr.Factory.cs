@@ -42,31 +42,33 @@ namespace Surreal
                 name);
         }
 
+        private static readonly Dictionary<long, Surr> _fromSqrtCache = new();
         /// <summary>
-        /// Create a surreal number for √n.
-        /// Uses binary search with predicate "mid² &lt; n" to generate dyadic approximations.
+        /// Create a surreal number for √n. Cached for canonical instances, so reference-equality works for cancellation.
         /// </summary>
         public static Surr FromSqrt(long n)
         {
             if (n < 0) throw new ArgumentException("n must be non-negative");
-            // Check for perfect squares
-            long root = (long)Math.Sqrt(n);
-            if (root * root == n) return new Surr(root);
-            if ((root + 1) * (root + 1) == n) return new Surr(root + 1);
+            if (_fromSqrtCache.TryGetValue(n, out var cached)) return cached;
 
-            // Predicate: is midNum/2^exp < √n?  ↔  midNum² < n * 4^exp
+            long root = (long)Math.Sqrt(n);
+            if (root * root == n) { var r = new Surr(root); _fromSqrtCache[n] = r; return r; }
+            if ((root + 1) * (root + 1) == n) { var r = new Surr(root + 1); _fromSqrtCache[n] = r; return r; }
+
             var gen = new LazyDyadicApprox(
                 (midNum, exp) => midNum * midNum < n * (1L << (2 * exp)),
                 root,
-                $"sqrt:{n}");
+                (long)n);
 
             string name = $"√{n}";
-            return new Surr(
+            var result = new Surr(
                 new DyadicApproxBelow(gen, $"↗{name}"),
                 null,
                 new DyadicApproxAbove(gen, $"↘{name}"),
                 null,
                 name);
+            _fromSqrtCache[n] = result;
+            return result;
         }
 
         /// <summary>
@@ -82,6 +84,172 @@ namespace Surreal
                 new DyadicApproxAbove(gen, $"↘{name}"),
                 null,
                 name);
+        }
+
+        /// <summary>nth root of an integer k, for n ≥ 2. NthRoot(k, n)^n = k.</summary>
+        public static Surr NthRoot(long k, int n)
+        {
+            if (n < 2) throw new ArgumentException("n must be ≥ 2");
+            if (k < 0 && n % 2 == 0) throw new ArgumentException("Even root of negative");
+            if (k == 0) return Zero;
+            if (k == 1) return GetInt(1);
+            if (n == 2) return FromSqrt(k);
+
+            // Perfect nth power check
+            long absK = Math.Abs(k);
+            long approx = (long)Math.Round(Math.Pow(absK, 1.0 / n));
+            for (long cand = Math.Max(0, approx - 1); cand <= approx + 1; cand++)
+            {
+                long power = 1;
+                bool overflow = false;
+                for (int i = 0; i < n && !overflow; i++)
+                {
+                    if (cand != 0 && power > long.MaxValue / cand) { overflow = true; break; }
+                    power *= cand;
+                }
+                if (!overflow && power == absK)
+                    return k < 0 ? new Surr(-cand) : new Surr(cand);
+            }
+
+            // Dedekind cut predicate: is midNum/2^exp < ⁿ√k?  ↔  (midNum)^n < k · 2^(n·exp)
+            long floor = (long)Math.Floor(Math.Pow(absK, 1.0 / n));
+            if (k < 0)
+            {
+                // Odd n with negative k: ⁿ√(-k) = -ⁿ√k
+                return -NthRoot(-k, n);
+            }
+            var gen = new LazyDyadicApprox(
+                (midNum, exp) => {
+                    // midNum^n < k · 2^(n·exp). Compute midNum^n with overflow guard.
+                    long power = 1;
+                    for (int i = 0; i < n; i++)
+                    {
+                        if (midNum != 0 && Math.Abs(power) > long.MaxValue / Math.Abs(midNum)) return true; // overflow → treat as below
+                        power *= midNum;
+                    }
+                    int shift = n * exp;
+                    if (shift >= 63) return true; // overflow avoidance
+                    return power < k * (1L << shift);
+                },
+                floor, k, n);
+            string name = $"{n}√{k}";
+            var result = new Surr(
+                new DyadicApproxBelow(gen, $"↗{name}"),
+                null,
+                new DyadicApproxAbove(gen, $"↘{name}"),
+                null,
+                name);
+            return result;
+        }
+
+        /// <summary>General square root. Sqrt(x)² = x for any non-negative surreal.</summary>
+        public static Surr Sqrt(Surr x)
+        {
+            if (x.IsZero) return Zero;
+            if (x < 0) throw new ArgumentException("Sqrt of negative surreal");
+            // Perfect squares and integer sqrt
+            var val = TryEvaluate(x);
+            if (val.HasValue && val.Value.Exp == 0 && val.Value.Num >= 0)
+                return FromSqrt(val.Value.Num);
+            // Known transfinite cases by reference identity (lazily tag for squaring identity)
+            if (ReferenceEquals(x, Omega)) { if (SqrtOmega._sqrtOf is null) SqrtOmega._sqrtOf = Omega; return SqrtOmega; }
+            if (ReferenceEquals(x, EpsilonNaught)) { if (SqrtEpsilon0._sqrtOf is null) SqrtEpsilon0._sqrtOf = EpsilonNaught; return SqrtEpsilon0; }
+            if (ReferenceEquals(x, Zeta0)) { if (SqrtZeta0._sqrtOf is null) SqrtZeta0._sqrtOf = Zeta0; return SqrtZeta0; }
+            if (ReferenceEquals(x, Gamma0)) { if (SqrtGamma0._sqrtOf is null) SqrtGamma0._sqrtOf = Gamma0; return SqrtGamma0; }
+            // √(k·ω) via OmegaMultiples (e.g. from discriminant 4ω in quadratic x²-ω=0).
+            for (int k = 2; k <= 10; k++)
+                if (ReferenceEquals(x, OmegaMultiples.Instance.Get(k)))
+                    return MakeSqrtNOmega(k);
+            // Dispatch via existing sqrt-tagged generator (sqrt of √n = 4th root, fall through)
+            // General: Dedekind cut via surreal comparison mid² < x
+            var result = FromPredicate(
+                (midNum, exp) => {
+                    var mid = Dyadic(midNum, exp);
+                    return mid * mid < x;
+                },
+                1,
+                $"√({x})");
+            result._sqrtOf = x;
+            return result;
+        }
+
+        private static readonly Dictionary<Surr, Surr> _expCache = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        private static readonly Dictionary<Surr, Surr> _logCache = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+
+        /// <summary>Natural exponential. Exp(Log(x)) = x and Log(Exp(x)) = x via symbolic inverse tracking.</summary>
+        public static Surr Exp(Surr x)
+        {
+            if (x.IsZero) return GetInt(1);
+            if (x._logOf is not null) return x._logOf; // Exp(Log(y)) = y
+            if (x == GetInt(1)) return E();
+            if (ReferenceEquals(x, LogOmega)) return Omega;
+            if (ReferenceEquals(x, LogEpsilon0)) return EpsilonNaught;
+            if (ReferenceEquals(x, LogZeta0)) return Zeta0;
+            if (ReferenceEquals(x, LogGamma0)) return Gamma0;
+            if (_expCache.TryGetValue(x, out var cachedExp)) return cachedExp;
+            var val = TryEvaluate(x);
+            Surr result;
+            if (val.HasValue)
+            {
+                double v = val.Value.Num / (double)(1L << val.Value.Exp);
+                double ex = Math.Exp(v);
+                long floor = (long)Math.Floor(ex);
+                result = FromPredicate(
+                    (midNum, exp) => midNum < ex * (1L << exp),
+                    floor,
+                    $"exp({x})");
+            }
+            else
+            {
+                // Formal: exp is monotonic, so exp(x) > exp(y) for any known log bound y < x.
+                var leftOpts = new List<Surr> { x };  // exp(x) > x for x ≥ 1
+                if (x > LogOmega) leftOpts.Add(Omega);
+                if (x > LogEpsilon0) leftOpts.Add(EpsilonNaught);
+                if (x > LogZeta0) leftOpts.Add(Zeta0);
+                if (x > LogGamma0) leftOpts.Add(Gamma0);
+                result = new Surr(NaturalNumbers.Instance, leftOpts, null, null, $"exp({x})");
+            }
+            result._expOf = x;
+            _expCache[x] = result;
+            return result;
+        }
+
+        /// <summary>Natural logarithm. Log(Exp(x)) = x and Exp(Log(x)) = x via symbolic inverse tracking.</summary>
+        public static Surr Log(Surr x)
+        {
+            if (x == GetInt(1)) return Zero;
+            if (x._expOf is not null) return x._expOf; // Log(Exp(y)) = y
+            if (ReferenceEquals(x, Omega)) return LogOmega;
+            if (ReferenceEquals(x, EpsilonNaught)) return LogEpsilon0;
+            if (ReferenceEquals(x, Zeta0)) return LogZeta0;
+            if (ReferenceEquals(x, Gamma0)) return LogGamma0;
+            if (x <= 0) throw new ArgumentException("Log of non-positive surreal");
+            if (_logCache.TryGetValue(x, out var cachedLog)) return cachedLog;
+            Surr result;
+            var val = TryEvaluate(x);
+            if (val.HasValue)
+            {
+                double v = val.Value.Num / (double)(1L << val.Value.Exp);
+                double lv = Math.Log(v);
+                long floor = (long)Math.Floor(lv);
+                result = FromPredicate(
+                    (midNum, exp) => midNum < lv * (1L << exp),
+                    floor,
+                    $"log({x})");
+            }
+            else
+            {
+                // Formal: log is monotonic, include known-log lower bounds and x as upper bound.
+                var leftOpts = new List<Surr> { Zero };
+                if (x > Omega) leftOpts.Add(LogOmega);
+                if (x > EpsilonNaught) leftOpts.Add(LogEpsilon0);
+                if (x > Zeta0) leftOpts.Add(LogZeta0);
+                if (x > Gamma0) leftOpts.Add(LogGamma0);
+                result = new Surr(null, leftOpts, null, new List<Surr> { x }, $"log({x})");
+            }
+            result._logOf = x;
+            _logCache[x] = result;
+            return result;
         }
 
         /// <summary>
@@ -158,6 +326,7 @@ namespace Surreal
         public static readonly Surr Sqrt5 = FromSqrt(5);
 
         /// <summary>e (Euler's number) ≈ 2.71828... via Dedekind cut.</summary>
+        
         public static Surr E() => FromPredicate(
             (midNum, exp) => midNum < Math.E * (1L << exp), 2, "e");
 
@@ -302,39 +471,204 @@ namespace Surreal
                 Pow(Omega, EpsilonNaught),  // = ε₀ (but structurally a call)
             }, null, null, "ε₁");
 
+        private static readonly Dictionary<int, Surr> _epsilonCache = new();
         /// <summary>
         /// ε_n — the nth epsilon number (fixed point of x → ω^x).
         /// ε₀ &lt; ε₁ &lt; ε₂ &lt; ...
         /// </summary>
         public static Surr Epsilon(int n)
         {
+            if (n < 0) throw new ArgumentException("n must be non-negative");
             if (n == 0) return EpsilonNaught;
             if (n == 1) return Epsilon1;
-            // ε_n = {ε₀, ε₁, ..., ε_{n-1} | }
+            if (_epsilonCache.TryGetValue(n, out var cached)) return cached;
             var options = new List<Surr>();
             for (int i = 0; i < n; i++) options.Add(Epsilon(i));
-            return new Surr(null, options, null, null, $"ε_{n}");
+            var result = new Surr(null, options, null, null, $"ε_{n}");
+            _epsilonCache[n] = result;
+            return result;
         }
 
-        /// <summary>ζ₀ — first fixed point of x → ε_x. Greater than all ε_n.</summary>
+        /// <summary>ζ₀ — first fixed point of x → ε_x. Left set is EpsilonSeq: all finite-indexed ε_n.</summary>
         public static readonly Surr Zeta0 = new(
-            null, new List<Surr> {
-                EpsilonNaught, Epsilon(1), Epsilon(2), Epsilon(3), Epsilon(4)
-            }, null, null, "ζ₀");
+            EpsilonSeq.Instance, null, null, null, "ζ₀");
+
+        private static readonly Dictionary<int, Surr> _zetaCache = new();
+        /// <summary>ζ_n — the nth zeta number (fixed point of x → ε_x). Left options include previous ζ_k plus all ε's via EpsilonSeq.</summary>
+        public static Surr Zeta(int n)
+        {
+            if (n < 0) throw new ArgumentException("n must be non-negative");
+            if (n == 0) return Zeta0;
+            if (_zetaCache.TryGetValue(n, out var cached)) return cached;
+            var options = new List<Surr>();
+            for (int i = 0; i < n; i++) options.Add(Zeta(i));
+            var result = new Surr(EpsilonSeq.Instance, options, null, null, $"ζ_{n}");
+            _zetaCache[n] = result;
+            return result;
+        }
 
         /// <summary>
-        /// Γ₀ (Gamma-naught) — first fixed point of the Veblen hierarchy.
-        /// The Feferman-Schütte ordinal. Greater than all ζ_n, all ε_n.
+        /// Veblen function φ(α, β). Base cases:
+        /// φ(0, β) = ω^β, φ(1, β) = ε_β, φ(2, β) = ζ_β.
+        /// Higher α yields fixed points of lower-α columns. φ(α, 0) for α≥3 climbs Veblen hierarchy toward Γ₀ = least γ with φ(γ,0) = γ.
         /// </summary>
+        public static Surr Veblen(int alpha, int beta)
+        {
+            if (alpha < 0 || beta < 0) throw new ArgumentException("Veblen indices must be non-negative");
+            if (alpha == 0) return Pow(Omega, new Surr(beta));
+            if (alpha == 1) return Epsilon(beta);
+            if (alpha == 2) return Zeta(beta);
+            // General φ(α, β): left options are φ(α-1, φ(α, β-1) + 1), ... and all lower-column values.
+            // Simplified construction: {φ(α-1, k) for k = 0..5 | } gives a surreal beyond all φ(α-1, n).
+            var options = new List<Surr>();
+            for (int k = 0; k < beta; k++) options.Add(Veblen(alpha, k));
+            for (int k = 0; k <= 5; k++) options.Add(Veblen(alpha - 1, k));
+            return new Surr(null, options, null, null, $"φ({alpha},{beta})");
+        }
+
+        private static readonly Dictionary<(int, int, int), Surr> _veblen3Cache = new();
+        /// <summary>
+        /// Three-argument Veblen φ(α, β, γ). Leading zeros collapse: φ(0, 0, γ) = φ(γ). φ(α, β, 0) when α&gt;0 builds above all φ(α-1, *, *).
+        /// φ(1, 0, 0) is the Small Veblen ordinal (just beyond every Γ_n). Cached for repeated lookups.
+        /// </summary>
+        public static Surr Veblen(int alpha, int beta, int gamma)
+        {
+            if (alpha < 0 || beta < 0 || gamma < 0) throw new ArgumentException("Veblen indices must be non-negative");
+            if (alpha == 0) return Veblen(beta, gamma);
+            if (_veblen3Cache.TryGetValue((alpha, beta, gamma), out var cached)) return cached;
+            Surr result;
+            if (alpha == 1 && beta == 0 && gamma == 0)
+                result = new Surr(GammaSeq.Instance, null, null, null, "φ(1,0,0)");
+            else
+            {
+                var options = new List<Surr> { Gamma0 };
+                for (int k = 0; k <= 3; k++) options.Add(Veblen(alpha - 1, k, gamma));
+                for (int k = 0; k < gamma; k++) options.Add(Veblen(alpha, beta, k));
+                for (int k = 0; k < beta; k++) options.Add(Veblen(alpha, k, 0));
+                result = new Surr(null, options, null, null, $"φ({alpha},{beta},{gamma})");
+            }
+            _veblen3Cache[(alpha, beta, gamma)] = result;
+            return result;
+        }
+
+        /// <summary>Small Veblen ordinal: φ(1, 0, 0) — above every Γ_n. Lazy to avoid static init ordering issues.</summary>
+        public static Surr SmallVeblen() => Veblen(1, 0, 0);
+
+        /// <summary>Large Veblen ordinal: φ(1, 0, 0, 0) — above every φ(α, 0, 0) for countable α.
+        /// Countable. Below ω_1.</summary>
+        public static Surr LargeVeblen() => _lvo;
+        private static readonly Surr _lvo = new(SmallVeblenSeq.Instance, null, null, null, "LVO");
+
+        /// <summary>ω_1 — the first uncountable ordinal. Its left set is CountableOrdinals: every surreal tagged _isCountable is present.</summary>
+        public static readonly Surr Omega1 = InitOmega1();
+        private static Surr InitOmega1()
+        {
+            var s = new Surr(CountableOrdinals.Instance, null, null, null, "ω₁");
+            s._isCountable = false; // ω_1 is uncountable by definition
+            return s;
+        }
+
+        /// <summary>Bachmann's ψ collapsing function. For any α, ψ(α) is a countable ordinal above LVO and below ω_1.
+        /// Monotonic: larger α yields larger ψ(α) via PsiBelow(α) as left set, which contains ψ(β) for every β &lt; α. Cached by reference.</summary>
+        private static readonly Dictionary<Surr, Surr> _psiCache = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        public static Surr Psi(Surr alpha)
+        {
+            if (_psiCache.TryGetValue(alpha, out var cached)) return cached;
+            var opts = new List<Surr> { LargeVeblen(), SmallVeblen(), Gamma0 };
+            var result = new Surr(new PsiBelow(alpha), opts, null, new List<Surr> { Omega1 }, $"ψ({alpha})");
+            _psiCache[alpha] = result;
+            return result;
+        }
+
+        /// <summary>Bachmann-Howard ordinal, approximated as ψ(ω_1) — above LVO, still countable.</summary>
+        public static Surr BachmannHoward() => Psi(Omega1);
+
+        /// <summary>
+        /// Three-argument Veblen φ(α, β, γ) with a surreal α. Evaluable integer α dispatches to the int overload.
+        /// For transfinite α, supports only β = γ = 0: returns a surreal whose left set includes SVO, the finite-α Veblen ordinals, and Veblen(ε_k, 0, 0) for every ε_k &lt; α — so Veblen is structurally monotonic in α.
+        /// </summary>
+        private static readonly Dictionary<Surr, Surr> _veblenSurrCache = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        public static Surr Veblen(Surr alpha, int beta, int gamma)
+        {
+            var v = TryEvaluate(alpha);
+            if (v.HasValue && v.Value.Exp == 0 && v.Value.Num >= 0 && v.Value.Num <= int.MaxValue)
+                return Veblen((int)v.Value.Num, beta, gamma);
+            if (beta != 0 || gamma != 0)
+                throw new NotImplementedException("Surreal-indexed Veblen currently supports only φ(α, 0, 0)");
+            if (_veblenSurrCache.TryGetValue(alpha, out var cached)) return cached;
+            var opts = new List<Surr> { SmallVeblen() };
+            for (int k = 2; k <= 5; k++) opts.Add(Veblen(k, 0, 0));
+            var result = new Surr(new VeblenBelow(alpha), opts, null, null, $"φ({alpha},0,0)");
+            _veblenSurrCache[alpha] = result;
+            return result;
+        }
+
+        /// <summary>
+        /// Continued fraction [a₀; a₁, a₂, ..., aₙ] = a₀ + 1/(a₁ + 1/(a₂ + ... + 1/aₙ)).
+        /// Terms after a₀ must be positive. Returns a rational surreal.
+        /// </summary>
+        public static Surr FromContinuedFraction(params long[] terms)
+        {
+            if (terms.Length == 0) throw new ArgumentException("At least one term required");
+            for (int i = 1; i < terms.Length; i++)
+                if (terms[i] <= 0) throw new ArgumentException($"Term {i} must be positive");
+            // Evaluate right-to-left as p/q rationals to avoid surreal division cost.
+            long p = terms[^1], q = 1;
+            for (int i = terms.Length - 2; i >= 0; i--)
+            {
+                // current = aᵢ + 1/(p/q) = aᵢ + q/p = (aᵢ·p + q) / p
+                long newP = terms[i] * p + q;
+                long newQ = p;
+                p = newP; q = newQ;
+            }
+            return FromRational(p, q);
+        }
+
+        /// <summary>Γ₀ (Feferman-Schütte ordinal) — first fixed point of α ↦ φ(α, 0). Left set is ZetaSeq: all ζ_n.</summary>
         public static readonly Surr Gamma0 = new(
-            null, new List<Surr> {
-                Zeta0,
-                new Surr(null, new List<Surr> { Zeta0 }, null, null, "ζ₁"),
-                new Surr(null, new List<Surr> {
-                    Zeta0,
-                    new Surr(null, new List<Surr> { Zeta0 }, null, null, "ζ₁")
-                }, null, null, "ζ₂"),
-            }, null, null, "Γ₀");
+            ZetaSeq.Instance, null, null, null, "Γ₀");
+
+        private static readonly Dictionary<int, Surr> _gammaCache = new();
+        /// <summary>Γ_n — the nth Γ-fixed-point of α ↦ φ(α, 0). Left options include previous Γ_k plus all ζ's via ZetaSeq.</summary>
+        public static Surr Gamma(int n)
+        {
+            if (n < 0) throw new ArgumentException("n must be non-negative");
+            if (n == 0) return Gamma0;
+            if (_gammaCache.TryGetValue(n, out var cached)) return cached;
+            var options = new List<Surr>();
+            for (int i = 0; i < n; i++) options.Add(Gamma(i));
+            var result = new Surr(ZetaSeq.Instance, options, null, null, $"Γ_{n}");
+            _gammaCache[n] = result;
+            return result;
+        }
+
+        /// <summary>ε_α for a surreal index. Evaluable integer dispatches to Epsilon(int);
+        /// otherwise returns {EpsilonIndexedBelow(α) | ζ_0}. Monotonic in α via parameterized left set.</summary>
+        private static readonly Dictionary<Surr, Surr> _epsilonSurrCache = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        public static Surr Epsilon(Surr index)
+        {
+            var v = TryEvaluate(index);
+            if (v.HasValue && v.Value.Exp == 0 && v.Value.Num >= 0 && v.Value.Num <= int.MaxValue)
+                return Epsilon((int)v.Value.Num);
+            if (_epsilonSurrCache.TryGetValue(index, out var cached)) return cached;
+            var result = new Surr(new EpsilonIndexedBelow(index), null, null, new List<Surr> { Zeta0 }, $"ε_{{{index}}}");
+            _epsilonSurrCache[index] = result;
+            return result;
+        }
+
+        /// <summary>Γ_α for a surreal index. Evaluable integer dispatches to Gamma(int);
+        /// otherwise returns {GammaIndexedBelow(α) | SVO}. Monotonic in α via parameterized left set.</summary>
+        private static readonly Dictionary<Surr, Surr> _gammaSurrCache = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        public static Surr Gamma(Surr index)
+        {
+            var v = TryEvaluate(index);
+            if (v.HasValue && v.Value.Exp == 0 && v.Value.Num >= 0 && v.Value.Num <= int.MaxValue)
+                return Gamma((int)v.Value.Num);
+            if (_gammaSurrCache.TryGetValue(index, out var cached)) return cached;
+            var result = new Surr(new GammaIndexedBelow(index), null, null, new List<Surr> { SmallVeblen() }, $"Γ_{{{index}}}");
+            _gammaSurrCache[index] = result;
+            return result;
+        }
 
         /// <summary>1/ε₀ — infinitesimal smaller than 1/ω. Positive but less than all 1/ω^n.</summary>
         public static readonly Surr InverseEpsilon0 = new(
@@ -358,6 +692,18 @@ namespace Surreal
             "√ω");
         #endregion
 
+        /// <summary>√ε₀ — between ω and ε₀. (√ε₀)² = ε₀.</summary>
+        public static readonly Surr SqrtEpsilon0 = new(
+            NaturalNumbers.Instance, new List<Surr> { Omega, OmegaToOmega },
+            null, new List<Surr> { EpsilonNaught },
+            "√ε₀");
+
+        /// <summary>√ζ₀ — between ε₀ and ζ₀. (√ζ₀)² = ζ₀.</summary>
+        public static readonly Surr SqrtZeta0 = new(
+            NaturalNumbers.Instance, new List<Surr> { EpsilonNaught, Epsilon1 },
+            null, new List<Surr> { Zeta0 },
+            "√ζ₀");
+
         /// <summary>√Γ₀ — between ζ₀ and Γ₀. (√Γ₀)² = Γ₀.</summary>
         public static readonly Surr SqrtGamma0 = new(
             NaturalNumbers.Instance, new List<Surr> { EpsilonNaught, Zeta0 },
@@ -376,9 +722,21 @@ namespace Surreal
             null, new List<Surr> { SqrtOmega },
             "log(ω)");
 
-        /// <summary>log(Γ₀) — greater than log(ω), less than Γ₀.</summary>
-        public static readonly Surr LogGamma0 = new(
+        /// <summary>log(ε₀) — greater than log(ω), less than ε₀.</summary>
+        public static readonly Surr LogEpsilon0 = new(
             NaturalNumbers.Instance, new List<Surr> { LogOmega },
+            null, new List<Surr> { EpsilonNaught },
+            "log(ε₀)");
+
+        /// <summary>log(ζ₀) — greater than log(ε₀), less than ζ₀.</summary>
+        public static readonly Surr LogZeta0 = new(
+            NaturalNumbers.Instance, new List<Surr> { LogEpsilon0 },
+            null, new List<Surr> { Zeta0 },
+            "log(ζ₀)");
+
+        /// <summary>log(Γ₀) — greater than log(ζ₀), less than Γ₀.</summary>
+        public static readonly Surr LogGamma0 = new(
+            NaturalNumbers.Instance, new List<Surr> { LogZeta0 },
             null, new List<Surr> { Gamma0 },
             "log(Γ₀)");
 

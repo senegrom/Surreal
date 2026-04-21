@@ -15,6 +15,18 @@ namespace Surreal
         /// <summary>Symbolic components: if this surreal is a sum of simpler parts, track them for algebraic expansion.</summary>
         internal List<(Surr factor, bool negate)> _symbolicTerms;
 
+        /// <summary>If this surreal was produced by Sqrt(x), this holds x. Enables Sqrt(x)² = x.</summary>
+        internal Surr _sqrtOf;
+        /// <summary>If this surreal was produced by Exp(x), this holds x. Enables Log(Exp(x)) = x.</summary>
+        internal Surr _expOf;
+        /// <summary>If this surreal was produced by Log(x), this holds x. Enables Exp(Log(x)) = x.</summary>
+        internal Surr _logOf;
+
+        /// <summary>Trait flag: this surreal is a countable ordinal (or derived from countable operations).
+        /// Defaults to true; only explicitly-uncountable surreals (like ω_1) set it false.
+        /// Used by CountableOrdinals IInfiniteSet to short-circuit comparison with ω_1 and larger cardinals.</summary>
+        internal bool _isCountable = true;
+
         private Dyad? _cachedValue;
         private bool _evalAttempted;
 

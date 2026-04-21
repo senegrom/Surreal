@@ -10,6 +10,8 @@ namespace Surreal
     {
         #region Comparison operators
 
+        private const int CacheCapacity = 2_000_000;
+
         /// <summary>Memoization cache for <= comparisons, keyed by reference identity.</summary>
         private static readonly Dictionary<(Surr, Surr), bool> LeqCache = new(SurrPairComparer.Instance);
 
@@ -44,6 +46,7 @@ namespace Surreal
                 result = !rightHasLe;
             }
 
+            if (LeqCache.Count >= CacheCapacity) LeqCache.Clear();
             LeqCache[key] = result;
             return result;
         }
@@ -75,6 +78,9 @@ namespace Surreal
         public static Surr operator -(Surr a)
         {
             if (a.IsZero) return a;
+            // Double negation: -(-x) = x via symbolic tag
+            if (a._symbolicTerms is { Count: 1 } negList && negList[0].negate)
+                return negList[0].factor;
             if (a.IsFinite)
                 return new Surr(
                     Safe(a.right).Select(x => -x).ToList(),
@@ -117,6 +123,8 @@ namespace Surreal
             }
             if (a._displayName != null)
                 neg._displayName = $"-({a._displayName})";
+            // Negation preserves countability: -(countable) is countable, -(uncountable) is uncountable.
+            neg._isCountable = a._isCountable;
             return neg;
         }
 
@@ -143,6 +151,7 @@ namespace Surreal
                 var result = new Surr(
                     left1.Concat(left2).ToList(),
                     right1.Concat(right2).ToList(), raw: true).Simplify();
+                if (AddCache.Count >= CacheCapacity) AddCache.Clear();
                 AddCache[key] = result;
                 return result;
             }
@@ -171,14 +180,7 @@ namespace Surreal
             return TransfiniteAdd(a, b);
         }
 
-        /// <summary>
-        /// Add two surreals, but return null instead of entering TransfiniteAdd
-        /// if the result would trigger deep recursion. Used for cross-terms.
-        /// </summary>
-        /// <summary>
-        /// Add two surreals, returning null if it would trigger deep TransfiniteAdd recursion.
-        /// Safe for use in cross-term computation within TransfiniteAdd.
-        /// </summary>
+        /// <summary>Add two surreals; return null if it would trigger deep TransfiniteAdd recursion (safe for cross-terms).</summary>
         [System.ThreadStatic] private static int _safeAddDepth;
 
         private static Surr SafeAdd(Surr a, Surr b)
@@ -208,16 +210,7 @@ namespace Surreal
             return FromRational(ap * bq + bp * aq, aq * bq);
         }
 
-        /// <summary>
-        /// Decompose both operands into transfinite + finite parts via symbolic terms,
-        /// sum the finite parts, and rebuild. E.g., (ω - 25) + 25 → ω + 0 = ω.
-        /// </summary>
-        /// <summary>
-        /// Decompose both operands into transfinite + finite parts via symbolic terms,
-        /// sum the finite parts, and rebuild. E.g., (ω - 25) + 25 → ω + 0 = ω.
-        /// Only activates when at least one operand HAS symbolic terms (from TransfiniteAdd).
-        /// </summary>
-
+        /// <summary>Decompose via symbolic terms, sum finite parts, rebuild — e.g., (ω-25)+25 → ω.</summary>
         private static Surr TrySymbolicSum(Surr a, Surr b)
         {
             // Only try if at least one operand has symbolic terms from a previous TransfiniteAdd
@@ -290,8 +283,11 @@ namespace Surreal
             p = q = 0; return false;
         }
 
+        private static readonly Dictionary<(Surr, Surr), Surr> _transAddCache = new(SurrPairComparer.Instance);
         private static Surr TransfiniteAdd(Surr a, Surr b)
         {
+            var cacheKey = (a, b);
+            if (_transAddCache.TryGetValue(cacheKey, out var cachedSum)) return cachedSum;
             var finiteLeft = new List<Surr>();
             var finiteRight = new List<Surr>();
             IInfiniteSet newLeftInf = null;
@@ -340,6 +336,10 @@ namespace Surreal
             if (a._displayName != null && b._displayName != null)
                 result._displayName = $"{a._displayName}+{b._displayName}";
 
+            // Propagate countability: result is countable iff both operands are.
+            result._isCountable = a._isCountable && b._isCountable;
+
+            if (_transAddCache.Count < CacheCapacity) _transAddCache[cacheKey] = result;
             return result;
         }
 
@@ -373,28 +373,42 @@ namespace Surreal
             var bv1 = TryEvaluate(b);
             if (bv1.HasValue && bv1.Value.Num == 1 && bv1.Value.Exp == 0) return a;
 
+            // Negation unwrap: if one operand is tagged as -factor, compute -(factor * other).
+            // Integers' negation doesn't set _symbolicTerms, so this doesn't fire for int*int.
+            if (a._symbolicTerms is { Count: 1 } at && at[0].negate)
+                return -(at[0].factor * b);
+            if (b._symbolicTerms is { Count: 1 } bt && bt[0].negate)
+                return -(a * bt[0].factor);
+
             // Symbolic FOIL: check before IsFinite since TransfiniteAdd results may appear finite
             var foil = TrySymbolicProduct(a, b);
             if (foil is not null) return foil;
 
             if (a.IsFinite && b.IsFinite)
             {
-                var key = (Evaluate(a), Evaluate(b));
-                if (MulCache.TryGetValue(key, out var cached)) return cached;
+                // Only cache via Dyad keys when both operands are evaluable.
+                var av = TryEvaluate(a); var bv = TryEvaluate(b);
+                if (av.HasValue && bv.HasValue)
+                {
+                    var key = (av.Value, bv.Value);
+                    if (MulCache.TryGetValue(key, out var cached)) return cached;
 
-                var aL = Safe(a.left); var aR = Safe(a.right);
-                var bL = Safe(b.left); var bR = Safe(b.right);
+                    var aL = Safe(a.left); var aR = Safe(a.right);
+                    var bL = Safe(b.left); var bR = Safe(b.right);
 
-                var leftOpts =
-                    aL.SelectMany(al => bL.Select(bl => al * b + a * bl - al * bl))
-                    .Concat(aR.SelectMany(ar => bR.Select(br => ar * b + a * br - ar * br)));
-                var rightOpts =
-                    aL.SelectMany(al => bR.Select(br => al * b + a * br - al * br))
-                    .Concat(aR.SelectMany(ar => bL.Select(bl => ar * b + a * bl - ar * bl)));
+                    var leftOpts =
+                        aL.SelectMany(al => bL.Select(bl => al * b + a * bl - al * bl))
+                        .Concat(aR.SelectMany(ar => bR.Select(br => ar * b + a * br - ar * br)));
+                    var rightOpts =
+                        aL.SelectMany(al => bR.Select(br => al * b + a * br - al * br))
+                        .Concat(aR.SelectMany(ar => bL.Select(bl => ar * b + a * bl - ar * bl)));
 
-                var result = new Surr(leftOpts.ToList(), rightOpts.ToList(), raw: true).Simplify();
-                MulCache[key] = result;
-                return result;
+                    var result = new Surr(leftOpts.ToList(), rightOpts.ToList(), raw: true).Simplify();
+                    if (MulCache.Count >= CacheCapacity) MulCache.Clear();
+                    MulCache[key] = result;
+                    return result;
+                }
+                // Non-evaluable finite (e.g., -ε₀): fall through to TryKnownProduct / fallback.
             }
 
             // Algebraic product path: use generator tags
@@ -408,7 +422,9 @@ namespace Surreal
                 .Concat(aR2.SelectMany(ar => bR2.Select(br => ar * b + a * br - ar * br)));
             var ro = aL2.SelectMany(al => bR2.Select(br => al * b + a * br - al * br))
                 .Concat(aR2.SelectMany(ar => bL2.Select(bl => ar * b + a * bl - ar * bl)));
-            return new Surr(lo, ro);
+            var prod = new Surr(lo, ro);
+            prod._isCountable = a._isCountable && b._isCountable;
+            return prod;
         }
 
         public static Surr operator /(Surr a, Surr b)
@@ -416,20 +432,193 @@ namespace Surreal
             if (b.IsZero) throw new System.DivideByZeroException("Division by surreal zero");
             if (a.IsZero) return Zero;
 
-            // Known quotient patterns
+            // Known quotient patterns (fast paths for common cases)
             var known = TryKnownQuotient(a, b);
             if (known is not null) return known;
 
-            // Fallback: not yet implemented for general case
-            throw new System.NotImplementedException(
-                $"General surreal division not yet implemented for {a} / {b}");
+            // Conjugate path: if b is a 2-term sum where both terms have a known-square tag
+            // (sqrt generator with SqrtOf or _sqrtOf), multiply numerator and denominator by
+            // the conjugate so the denominator becomes a rational number.
+            var conjQuot = TryConjugateQuotient(a, b);
+            if (conjQuot is not null) return conjQuot;
+
+            // General: a / b = a · (1/b).
+            return a * Inverse(b);
+        }
+
+        /// <summary>
+        /// If b = f₁ ± f₂ where each fᵢ has a known square, rationalize: a/b = a·conj(b) / (b·conj(b)).
+        /// Two paths:
+        ///   (1) both f_i squares are evaluable integers — compute denom = f1² − f2² and scale.
+        ///   (2) b · conj(b) equals a structurally — then a/b = conj(b) directly (covers the
+        ///       (A² − B²)/(A − B) = A + B identity even when B² is transfinite).
+        /// Returns null if the pattern doesn't match.
+        /// </summary>
+        private static Surr TryConjugateQuotient(Surr a, Surr b)
+        {
+            if (b._symbolicTerms is not { Count: 2 } ys) return null;
+            var (f1, n1) = ys[0];
+            var (f2, n2) = ys[1];
+            if (!TryGetSquare(f1, out var f1Sq) || !TryGetSquare(f2, out var f2Sq)) return null;
+            // Build conjugate: flip second term's negate flag.
+            var t1 = n1 ? -f1 : f1;
+            var t2 = !n2 ? -f2 : f2;
+            var conj = t1 + t2;
+
+            // Path 1: both squares are evaluable integers — rationalize via the integer denominator.
+            var f1SqVal = TryEvaluate(f1Sq);
+            var f2SqVal = TryEvaluate(f2Sq);
+            if (f1SqVal.HasValue && f2SqVal.HasValue
+                && f1SqVal.Value.Exp == 0 && f2SqVal.Value.Exp == 0)
+            {
+                long denom = f1SqVal.Value.Num - f2SqVal.Value.Num;
+                if (denom != 0)
+                {
+                    var aVal = TryEvaluate(a);
+                    if (aVal.HasValue && aVal.Value.Exp == 0 && aVal.Value.Num % denom == 0)
+                        return new Surr(aVal.Value.Num / denom) * conj;
+                    return (a * conj) / new Surr(denom);
+                }
+            }
+
+            // Path 2: transfinite squares — check if a == f1² − f2² (i.e., a equals what b · conj would FOIL to).
+            // If so, a/b = conj. Covers the (A² − B²)/(A − B) = A + B identity when B² is transfinite.
+            try
+            {
+                var bConjValue = f1Sq + (-f2Sq);
+                if (a == bConjValue) return conj;
+            }
+            catch (System.NotImplementedException) { /* can't even construct b·conj — skip */ }
+            return null;
+        }
+
+        /// <summary>Extract the known square of x (via generator.SqrtOf or _sqrtOf tag). Returns false if no square is tracked.</summary>
+        private static bool TryGetSquare(Surr x, out Surr square)
+        {
+            var g = GeneratorHelper.GetGenerator(x);
+            if (g?.SqrtOf is long n) { square = GetInt(n); return true; }
+            if (x._sqrtOf is not null) { square = x._sqrtOf; return true; }
+            square = null;
+            return false;
         }
 
         public static Surr operator /(Surr a, long b) => a / new Surr(b);
         public static Surr operator /(long a, Surr b) => new Surr(a) / b;
 
+        /// <summary>
+        /// Multiplicative inverse 1/y for non-zero y. Handles evaluable dyadics, rational/sqrt/nth-root
+        /// generators, and named transfinite constants (ω, ε₀, Γ₀). Throws for truly unsupported cases
+        /// like y = ω+1 (inverses requiring Conway's infinite iteration).
+        /// </summary>
+        private static readonly Dictionary<Surr, Surr> _inverseCache = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        public static Surr Inverse(Surr y)
+        {
+            if (y.IsZero) throw new System.DivideByZeroException("Inverse of zero");
+            if (_inverseCache.TryGetValue(y, out var cached)) return cached;
+            // Unwrap symbolic negation first (avoids Conway comparison on y<0, which can give wrong
+            // answers for structurally-swapped negatives like -√3).
+            if (y._symbolicTerms is { Count: 1 } neg && neg[0].negate)
+            {
+                var inv = -Inverse(neg[0].factor);
+                _inverseCache[y] = inv;
+                return inv;
+            }
+            if (y < 0)
+            {
+                var inv = -Inverse(-y);
+                _inverseCache[y] = inv;
+                return inv;
+            }
+            // y > 0 from here.
+
+            // Evaluable dyadic y: 1/y = den/num.
+            var yVal = TryEvaluate(y);
+            if (yVal.HasValue)
+            {
+                if (yVal.Value.Num == 1 && yVal.Value.Exp == 0) return GetInt(1);
+                long num = yVal.Value.Num;
+                long den = 1L << yVal.Value.Exp;
+                var inv = FromRational(den, num);
+                _inverseCache[y] = inv;
+                return inv;
+            }
+
+            // Generator-based: rational p/q, sqrt n, nth-root (k, n).
+            var yGen = GeneratorHelper.GetGenerator(y);
+            if (yGen?.P != null && yGen?.Q != null)
+            {
+                var inv = FromRational(yGen.Q.Value, yGen.P.Value);
+                _inverseCache[y] = inv;
+                return inv;
+            }
+            if (yGen?.SqrtOf is long sn)
+            {
+                // 1/√n via Dedekind cut, tagged _sqrtOf = 1/n so (1/√n)² = 1/n.
+                var inv = FromPredicate(
+                    (midNum, exp) =>
+                    {
+                        if (2 * exp >= 63) return true;
+                        return midNum * midNum * sn < (1L << (2 * exp));
+                    },
+                    0,
+                    $"1/√{sn}");
+                inv._sqrtOf = FromRational(1, sn);
+                _inverseCache[y] = inv;
+                return inv;
+            }
+            if (yGen?.NthRootOf is (long k, int n))
+            {
+                // 1/ⁿ√k via Dedekind cut, tagged _nthRoot equivalent for n² identity.
+                var inv = FromPredicate(
+                    (midNum, exp) =>
+                    {
+                        int shift = n * exp;
+                        if (shift >= 63) return true;
+                        long power = 1;
+                        for (int i = 0; i < n; i++)
+                        {
+                            if (midNum != 0 && System.Math.Abs(power) > long.MaxValue / System.Math.Abs(midNum)) return true;
+                            power *= midNum;
+                        }
+                        return power * k < (1L << shift);
+                    },
+                    0,
+                    $"1/{n}√{k}");
+                _inverseCache[y] = inv;
+                return inv;
+            }
+
+            // Named transfinite constants
+            if (ReferenceEquals(y, Omega)) return InverseOmega;
+            if (ReferenceEquals(y, EpsilonNaught)) return InverseEpsilon0;
+            if (ReferenceEquals(y, Gamma0)) return InverseGamma0;
+            if (ReferenceEquals(y, SqrtOmega)) return FromSqrt(1) / SqrtOmega; // unreachable; handled above
+
+            // Sqrt-tagged transfinite (e.g. √Γ_0): 1/√x via Sqrt of Inverse(x).
+            if (y._sqrtOf is Surr sqrtOfVal)
+                return Sqrt(Inverse(sqrtOfVal));
+
+            throw new System.NotImplementedException(
+                $"Inverse not yet implemented for {y} (requires Conway's iterative inversion)");
+        }
+
         private static Surr TryKnownQuotient(Surr a, Surr b)
         {
+            // Reflexive: x / x = 1 for any non-zero x
+            if (ReferenceEquals(a, b)) return GetInt(1);
+
+            // Normalize sign: -x / y = -(x/y); x / -y = -(x/y). Unwrap one level of symbolic negation.
+            if (a._symbolicTerms is { Count: 1 } at && at[0].negate)
+            {
+                var inner = TryKnownQuotient(at[0].factor, b);
+                if (inner is not null) return -inner;
+            }
+            if (b._symbolicTerms is { Count: 1 } bt && bt[0].negate)
+            {
+                var inner = TryKnownQuotient(a, bt[0].factor);
+                if (inner is not null) return -inner;
+            }
+
             var aVal = TryEvaluate(a);
             var bVal = TryEvaluate(b);
             var aGen = GeneratorHelper.GetGenerator(a);
@@ -469,21 +658,73 @@ namespace Surreal
                 return FromRational(num, den);
             }
 
-            // √n / √m = √(n/m) if n/m is integer, else (√n/√m) = √n · (1/√m)
-            if (aGen != null && bGen != null
-                && aGen.Tag.StartsWith("sqrt:") && bGen.Tag.StartsWith("sqrt:"))
+            // √n / √m = √(n/m) if n/m is integer, else rationalize: √n/√m = √(n·m)/m
+            if (aGen?.SqrtOf is long sn && bGen?.SqrtOf is long sm)
             {
-                long n = long.Parse(aGen.Tag[5..]);
-                long m = long.Parse(bGen.Tag[5..]);
-                if (n % m == 0) return FromSqrt(n / m);
-                // √n / √m = √(n·m) / m  — rationalize denominator
-                return FromSqrt(n * m) / new Surr(m);
+                if (sn % sm == 0) return FromSqrt(sn / sm);
+                return FromSqrt(sn * sm) / new Surr(sm);
             }
 
-            // ω / positive integer = OmegaMultiples slot (conceptual, ω/n < ω)
-            if (a._displayName == "ω" && bVal.HasValue && bVal.Value.Exp == 0 && bVal.Value.Num > 0)
+            // √n / integer k = √(n/k²) if k² | n, else √(n·k²)/(k²) via rationalization
+            if (aGen?.SqrtOf is long sqN
+                && bVal.HasValue && bVal.Value.Exp == 0 && bVal.Value.Num != 0)
+            {
+                long k = bVal.Value.Num;
+                long kSq = k * k;
+                if (sqN % kSq == 0)
+                {
+                    var root = FromSqrt(sqN / kSq);
+                    return k < 0 ? -root : root;
+                }
+            }
+
+            // integer k / √n = √(k²/n) if n | k², else k·√n/n via tagged FromPredicate.
+            if (bGen?.SqrtOf is long sqM
+                && aVal.HasValue && aVal.Value.Exp == 0 && aVal.Value.Num != 0)
+            {
+                long k = aVal.Value.Num;
+                if ((k * k) % sqM == 0)
+                {
+                    var root = FromSqrt(k * k / sqM);
+                    return k < 0 ? -root : root;
+                }
+                // k/√n: build a tagged surreal so that (k/√n)² = k²/n and (k/√n)·√n = k.
+                long absK = System.Math.Abs(k);
+                var res = FromPredicate(
+                    (midNum, exp) =>
+                    {
+                        if (2 * exp >= 63) return true;
+                        return midNum * midNum * sqM < absK * absK * (1L << (2 * exp));
+                    },
+                    0,
+                    $"{k}/√{sqM}");
+                res._sqrtOf = FromRational(absK * absK, sqM);
+                return k < 0 ? -res : res;
+            }
+
+            // √(m·ω) / k = √((m/k²)·ω) when k² | m — e.g., √(4ω)/2 = √ω
+            if (a._sqrtOf is not null && bVal.HasValue && bVal.Value.Exp == 0 && bVal.Value.Num != 0)
+            {
+                for (int m = 2; m <= 10; m++)
+                {
+                    if (!ReferenceEquals(a._sqrtOf, OmegaMultiples.Instance.Get(m))) continue;
+                    long k = bVal.Value.Num;
+                    long absK = System.Math.Abs(k);
+                    long kSq = absK * absK;
+                    if (m % kSq == 0)
+                    {
+                        int newM = m / (int)kSq;
+                        var root = newM == 1 ? SqrtOmega : MakeSqrtNOmega(newM);
+                        return k < 0 ? -root : root;
+                    }
+                }
+            }
+
+            // ω / integer (signed): ω/(-n) = -(ω/n)
+            if (ReferenceEquals(a, Omega) && bVal.HasValue && bVal.Value.Exp == 0 && bVal.Value.Num != 0)
             {
                 long n = bVal.Value.Num;
+                if (n < 0) return -(a / new Surr(-n));
                 if (n == 1) return a;
                 if (n == 2) return OmegaHalf;
                 // General ω/n: {naturals | ω/(n-1), ω/(n-1)-1, ...}
@@ -498,10 +739,20 @@ namespace Surreal
 
         private static Surr TryKnownProduct(Surr a, Surr b)
         {
+            // Sqrt(x) * Sqrt(x) = x via _sqrtOf tag
+            if (a._sqrtOf is not null && b._sqrtOf is not null && ReferenceEquals(a._sqrtOf, b._sqrtOf))
+                return a._sqrtOf;
+
             var aGen = GeneratorHelper.GetGenerator(a);
             var bGen = GeneratorHelper.GetGenerator(b);
             var aVal = TryEvaluate(a);
             var bVal = TryEvaluate(b);
+
+            // (1/√n) · √n = 1: a tagged with _sqrtOf = 1/n meets b's sqrt generator.
+            if (a._sqrtOf is not null && bGen?.SqrtOf is long bSqrtN && IsReciprocalOf(a._sqrtOf, bSqrtN))
+                return GetInt(1);
+            if (b._sqrtOf is not null && aGen?.SqrtOf is long aSqrtN && IsReciprocalOf(b._sqrtOf, aSqrtN))
+                return GetInt(1);
 
             // dyadic * rational generator
             if (aVal.HasValue && bGen?.P != null && bGen?.Q != null)
@@ -518,52 +769,41 @@ namespace Surreal
             }
 
             // dyadic * sqrt: k * √n = √(k²n)
-            if (aVal.HasValue && bGen != null && bGen.Tag.StartsWith("sqrt:"))
+            if (aVal.HasValue && bGen?.SqrtOf is long bSn)
             {
-                long n = long.Parse(bGen.Tag[5..]);
                 long k = aVal.Value.Num;
                 long kDen = 1L << aVal.Value.Exp;
-                // (k/kDen) * √n = √(k²n / kDen²) — only clean for integer k
                 if (aVal.Value.Exp == 0 && k > 0)
-                    return FromSqrt(k * k * n);
-                // For dyadic k: k*√n is not a simple sqrt. Use FromPredicate.
-                // mid < k*√n ↔ mid/k < √n ↔ (mid*kDen)² < n * (k * 2^exp)²
+                    return FromSqrt(k * k * bSn);
                 return FromPredicate(
-                    (midNum, exp) => midNum * midNum * kDen * kDen < n * k * k * (1L << (2 * exp)),
-                    (long)(k * System.Math.Sqrt(n) / kDen),
-                    $"{aVal.Value}·√{n}");
+                    (midNum, exp) => midNum * midNum * kDen * kDen < bSn * k * k * (1L << (2 * exp)),
+                    (long)(k * System.Math.Sqrt(bSn) / kDen),
+                    $"{aVal.Value}·√{bSn}");
             }
-            if (bVal.HasValue && aGen != null && aGen.Tag.StartsWith("sqrt:"))
+            if (bVal.HasValue && aGen?.SqrtOf is long aSn)
             {
-                long n = long.Parse(aGen.Tag[5..]);
                 long k = bVal.Value.Num;
                 long kDen = 1L << bVal.Value.Exp;
                 if (bVal.Value.Exp == 0 && k > 0)
-                    return FromSqrt(k * k * n);
+                    return FromSqrt(k * k * aSn);
                 return FromPredicate(
-                    (midNum, exp) => midNum * midNum * kDen * kDen < n * k * k * (1L << (2 * exp)),
-                    (long)(k * System.Math.Sqrt(n) / kDen),
-                    $"{bVal.Value}·√{n}");
+                    (midNum, exp) => midNum * midNum * kDen * kDen < aSn * k * k * (1L << (2 * exp)),
+                    (long)(k * System.Math.Sqrt(aSn) / kDen),
+                    $"{bVal.Value}·√{aSn}");
             }
 
-            // Check if either is √ω (display name based, since it has no generator)
-            bool aIsSqrtOmega = a._displayName == "√ω";
-            bool bIsSqrtOmega = b._displayName == "√ω";
+            // Check if either is √ω by reference identity (robust across construction paths)
+            bool aIsSqrtOmega = ReferenceEquals(a, SqrtOmega);
+            bool bIsSqrtOmega = ReferenceEquals(b, SqrtOmega);
 
             // √ω * √ω = ω
             if (aIsSqrtOmega && bIsSqrtOmega) return Omega;
 
             // √ω * √n = √(n·ω) — represented as tagged transfinite surreal
-            if (aIsSqrtOmega && bGen != null && bGen.Tag.StartsWith("sqrt:"))
-            {
-                long n = long.Parse(bGen.Tag[5..]);
-                return MakeSqrtNOmega(n);
-            }
-            if (bIsSqrtOmega && aGen != null && aGen.Tag.StartsWith("sqrt:"))
-            {
-                long n = long.Parse(aGen.Tag[5..]);
-                return MakeSqrtNOmega(n);
-            }
+            if (aIsSqrtOmega && bGen?.SqrtOf is long bSqW)
+                return MakeSqrtNOmega(bSqW);
+            if (bIsSqrtOmega && aGen?.SqrtOf is long aSqW)
+                return MakeSqrtNOmega(aSqW);
 
             // √ω * integer k = k√ω — tagged transfinite
             if (aIsSqrtOmega && bVal.HasValue && bVal.Value.Exp == 0)
@@ -576,12 +816,14 @@ namespace Surreal
                 return Dyadic(aVal.Value.Num * bVal.Value.Num, aVal.Value.Exp + bVal.Value.Exp);
 
             // ω * ω = ω²
-            bool aIsOmega = a._displayName == "ω";
-            bool bIsOmega = b._displayName == "ω";
+            bool aIsOmega = ReferenceEquals(a, Omega);
+            bool bIsOmega = ReferenceEquals(b, Omega);
+            bool aIsOmegaSq = ReferenceEquals(a, OmegaSquared);
+            bool bIsOmegaSq = ReferenceEquals(b, OmegaSquared);
             if (aIsOmega && bIsOmega) return OmegaSquared;
-            if (aIsOmega && b._displayName == "ω²") return OmegaPowers.Instance.Get(3);
-            if (bIsOmega && a._displayName == "ω²") return OmegaPowers.Instance.Get(3);
-            if (a._displayName == "ω²" && b._displayName == "ω²") return OmegaPowers.Instance.Get(4);
+            if (aIsOmega && bIsOmegaSq) return OmegaPowers.Instance.Get(3);
+            if (bIsOmega && aIsOmegaSq) return OmegaPowers.Instance.Get(3);
+            if (aIsOmegaSq && bIsOmegaSq) return OmegaPowers.Instance.Get(4);
 
             // ω * integer = n·ω
             if (aIsOmega && bVal.HasValue && bVal.Value.Exp == 0 && bVal.Value.Num > 0)
@@ -593,18 +835,63 @@ namespace Surreal
             if (aGen is null || bGen is null) return null;
 
             // sqrt * sqrt: √n * √m = √(nm)
-            if (aGen.Tag.StartsWith("sqrt:") && bGen.Tag.StartsWith("sqrt:"))
-            {
-                long n = long.Parse(aGen.Tag[5..]);
-                long m = long.Parse(bGen.Tag[5..]);
-                return FromSqrt(n * m);
-            }
+            if (aGen.SqrtOf is long n0 && bGen.SqrtOf is long m0)
+                return FromSqrt(n0 * m0);
+
+            // ⁿ√k · ⁿ√m = ⁿ√(k·m), when both generators are nth-roots with matching n
+            if (aGen.NthRootOf is (long k1, int n1) && bGen.NthRootOf is (long k2, int n2) && n1 == n2)
+                return NthRoot(k1 * k2, n1);
 
             // rational * rational: (p1/q1) * (p2/q2)
             if (aGen.P.HasValue && bGen.P.HasValue)
                 return FromRational(aGen.P.Value * bGen.P.Value, aGen.Q.Value * bGen.Q.Value);
 
             return null;
+        }
+
+        /// <summary>Does x structurally represent 1/n for the given integer n?</summary>
+        private static bool IsReciprocalOf(Surr x, long n)
+        {
+            var v = TryEvaluate(x);
+            if (v.HasValue) return v.Value.Num == 1 && (1L << v.Value.Exp) == n;
+            var g = GeneratorHelper.GetGenerator(x);
+            return g?.P == 1 && g?.Q == n;
+        }
+
+        /// <summary>Conservative equality: ReferenceEquals or matching dyadic values. No expensive operator==.</summary>
+        private static bool AreEqual(Surr a, Surr b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            var av = TryEvaluate(a); var bv = TryEvaluate(b);
+            return av.HasValue && bv.HasValue && av.Value.Num == bv.Value.Num && av.Value.Exp == bv.Value.Exp;
+        }
+
+        /// <summary>Conservative negation check: dyadic opposites, or one's _symbolicTerms = [(other, true)].</summary>
+        private static bool AreNegatives(Surr a, Surr b)
+        {
+            var av = TryEvaluate(a); var bv = TryEvaluate(b);
+            if (av.HasValue && bv.HasValue)
+                return av.Value.Num == -bv.Value.Num && av.Value.Exp == bv.Value.Exp;
+            // a = -b: operator- on b (no _symbolicTerms) produces a with [(b, true)].
+            if (a._symbolicTerms is { Count: 1 } at
+                && at[0].negate && ReferenceEquals(at[0].factor, b))
+                return true;
+            if (b._symbolicTerms is { Count: 1 } bt
+                && bt[0].negate && ReferenceEquals(bt[0].factor, a))
+                return true;
+            // Both have symbolic terms, pairwise inverted
+            if (a._symbolicTerms is not null && b._symbolicTerms is not null
+                && a._symbolicTerms.Count == b._symbolicTerms.Count)
+            {
+                for (int k = 0; k < a._symbolicTerms.Count; k++)
+                {
+                    var (af, an) = a._symbolicTerms[k];
+                    var (bf, bn) = b._symbolicTerms[k];
+                    if (!ReferenceEquals(af, bf) || an == bn) return false;
+                }
+                return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -629,33 +916,16 @@ namespace Surreal
                 }
             }
 
-            // Cancel pairs that sum to zero: same negate with opposite values,
-            // or different negate with same values.
+            // Cancel pairs that sum to zero: (sign_i · v_i) + (sign_j · v_j) == 0.
+            //   Same sign: v_i and v_j are negations of each other.
+            //   Opposite sign: v_i and v_j are equal.
             for (int i = 0; i < products.Count; i++)
             {
                 for (int j = i + 1; j < products.Count; j++)
                 {
-                    bool cancels = false;
-                    // Same negate, opposite values: +X and +(-X) → cancels
-                    if (products[i].negate == products[j].negate)
-                    {
-                        var vi = products[i].value;
-                        var vj = products[j].value;
-                        if (vi._displayName != null && vj._displayName != null
-                            && (vi._displayName == $"-({vj._displayName})"
-                                || vj._displayName == $"-({vi._displayName})"
-                                || (vi._displayName.StartsWith("-") && vj._displayName == vi._displayName[1..])
-                                || (vj._displayName.StartsWith("-") && vi._displayName == vj._displayName[1..])))
-                            cancels = true;
-                        // Also check via TryEvaluate: values are negatives of each other
-                        var avi = TryEvaluate(vi); var avj = TryEvaluate(vj);
-                        if (avi.HasValue && avj.HasValue && avi.Value.Num == -avj.Value.Num && avi.Value.Exp == avj.Value.Exp)
-                            cancels = true;
-                    }
-                    // Different negate, same values
-                    else if (products[i].value._displayName != null
-                        && products[i].value._displayName == products[j].value._displayName)
-                        cancels = true;
+                    bool cancels = products[i].negate == products[j].negate
+                        ? AreNegatives(products[i].value, products[j].value)
+                        : AreEqual(products[i].value, products[j].value);
 
                     if (cancels)
                     {
@@ -702,19 +972,41 @@ namespace Surreal
             return transfiniteSum + finiteVal;
         }
 
-        /// <summary>√(n·ω) — transfinite surreal, tagged for algebraic manipulation.</summary>
+        private static readonly Dictionary<long, Surr> _sqrtNOmegaCache = new();
+        private static readonly Dictionary<long, Surr> _kSqrtOmegaCache = new();
+
+        /// <summary>√(n·ω) — cached so ReferenceEquals works for cancellation. Tagged with _sqrtOf.</summary>
         private static Surr MakeSqrtNOmega(long n)
         {
-            // √(nω) * √(nω) = nω. Greater than all finite reals, less than ω.
-            return new Surr(NaturalNumbers.Instance, null, null, new List<Surr> { Omega }, $"√({n}ω)");
+            if (_sqrtNOmegaCache.TryGetValue(n, out var cached)) return cached;
+            var s = new Surr(NaturalNumbers.Instance, null, null, new List<Surr> { Omega }, $"√({n}ω)");
+            if (n >= 2 && n <= 10) s._sqrtOf = OmegaMultiples.Instance.Get((int)n);
+            _sqrtNOmegaCache[n] = s;
+            return s;
         }
 
-        /// <summary>k·√ω — transfinite surreal.</summary>
+        /// <summary>k·√ω — cached so ReferenceEquals works for cancellation. Tagged with _sqrtOf = k²·ω so (k√ω)² = k²ω.</summary>
         private static Surr MakeKSqrtOmega(long k)
         {
             if (k == 0) return Zero;
             if (k == 1) return SqrtOmega;
-            return new Surr(NaturalNumbers.Instance, null, null, new List<Surr> { Omega }, $"{k}√ω");
+            if (k == -1) return -SqrtOmega;
+            if (_kSqrtOmegaCache.TryGetValue(k, out var cached)) return cached;
+            Surr s;
+            if (k > 0)
+            {
+                s = new Surr(NaturalNumbers.Instance, null, null, new List<Surr> { Omega }, $"{k}√ω");
+                // (k√ω)² = k²·ω. For small k the square falls in OmegaMultiples.
+                long kSq = k * k;
+                if (kSq >= 2 && kSq <= 10) s._sqrtOf = OmegaMultiples.Instance.Get((int)kSq);
+                else if (kSq == 1) s._sqrtOf = Omega;
+            }
+            else
+            {
+                s = -MakeKSqrtOmega(-k);
+            }
+            _kSqrtOmegaCache[k] = s;
+            return s;
         }
 
         public static Surr operator *(Surr a, long b) => a * new Surr(b);
@@ -744,35 +1036,37 @@ namespace Surreal
                 return new Surr(result);
             }
 
+            bool baseIsOmega = ReferenceEquals(baseVal, Omega);
+
             // ω ^ n = OmegaPowers
-            if (baseVal._displayName == "ω" && ev.HasValue && ev.Value.Exp == 0 && ev.Value.Num > 0)
+            if (baseIsOmega && ev.HasValue && ev.Value.Exp == 0 && ev.Value.Num > 0)
                 return OmegaPowers.Instance.Get((int)ev.Value.Num);
 
             // ω ^ ω = ω^ω
-            if (baseVal._displayName == "ω" && exponent._displayName == "ω")
+            if (baseIsOmega && ReferenceEquals(exponent, Omega))
                 return OmegaToOmega;
 
-            // ω ^ ε_n = ε_n (defining property of epsilon numbers)
-            if (baseVal._displayName == "ω" && exponent._displayName != null
+            // ω ^ ε_n = ε_n (defining property of epsilon numbers).
+            // Epsilon numbers are produced by Epsilon(n); display name starts with "ε".
+            if (baseIsOmega && exponent._displayName != null
                 && exponent._displayName.StartsWith("ε"))
                 return exponent;
 
             // ω ^ ζ₀ = ζ₀, ω ^ Γ₀ = Γ₀ (fixed points of higher hierarchies)
-            if (baseVal._displayName == "ω" && exponent._displayName is "ζ₀" or "Γ₀")
+            if (baseIsOmega && (ReferenceEquals(exponent, Zeta0) || ReferenceEquals(exponent, Gamma0)))
                 return exponent;
 
             // n ^ ω for finite n ≥ 2: sup{n^k : k ∈ ℕ} = ω
-            if (bv.HasValue && bv.Value.Exp == 0 && bv.Value.Num >= 2 && exponent._displayName == "ω")
+            if (bv.HasValue && bv.Value.Exp == 0 && bv.Value.Num >= 2 && ReferenceEquals(exponent, Omega))
                 return Omega;
 
-            // ω ^ ω^n: produces next omega tower level
             // (ω^ω)^ω = ω^(ω²) via ordinal: (α^β)^γ = α^(β·γ) and ω·ω = ω²
-            if (baseVal._displayName == "ω^ω" && exponent._displayName == "ω")
+            if (ReferenceEquals(baseVal, OmegaToOmega) && ReferenceEquals(exponent, Omega))
                 return Pow(Omega, OmegaSquared);
 
-            // ω ^ ω² etc.
-            if (baseVal._displayName == "ω" && exponent._displayName == "ω²")
-                return OmegaPowers.Instance.Get(3); // ω^(ω²) represented as ω↑↑level
+            // ω ^ ω²
+            if (baseIsOmega && ReferenceEquals(exponent, OmegaSquared))
+                return OmegaPowers.Instance.Get(3);
 
             throw new System.NotImplementedException(
                 $"General exponentiation not yet implemented for {baseVal} ^ {exponent}");

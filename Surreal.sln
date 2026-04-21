@@ -5,16 +5,42 @@ VisualStudioVersion = 15.0.27703.2026
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Surreal", "Surreal\Surreal.csproj", "{8B1A8DDC-0F60-4DA0-BD62-323978006DE3}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Surreal.Tests", "Surreal.Tests\Surreal.Tests.csproj", "{31136820-36C1-48A3-95F0-63823C7B8A02}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
 		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{8B1A8DDC-0F60-4DA0-BD62-323978006DE3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{8B1A8DDC-0F60-4DA0-BD62-323978006DE3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8B1A8DDC-0F60-4DA0-BD62-323978006DE3}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{8B1A8DDC-0F60-4DA0-BD62-323978006DE3}.Debug|x64.Build.0 = Debug|Any CPU
+		{8B1A8DDC-0F60-4DA0-BD62-323978006DE3}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{8B1A8DDC-0F60-4DA0-BD62-323978006DE3}.Debug|x86.Build.0 = Debug|Any CPU
 		{8B1A8DDC-0F60-4DA0-BD62-323978006DE3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8B1A8DDC-0F60-4DA0-BD62-323978006DE3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8B1A8DDC-0F60-4DA0-BD62-323978006DE3}.Release|x64.ActiveCfg = Release|Any CPU
+		{8B1A8DDC-0F60-4DA0-BD62-323978006DE3}.Release|x64.Build.0 = Release|Any CPU
+		{8B1A8DDC-0F60-4DA0-BD62-323978006DE3}.Release|x86.ActiveCfg = Release|Any CPU
+		{8B1A8DDC-0F60-4DA0-BD62-323978006DE3}.Release|x86.Build.0 = Release|Any CPU
+		{31136820-36C1-48A3-95F0-63823C7B8A02}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{31136820-36C1-48A3-95F0-63823C7B8A02}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{31136820-36C1-48A3-95F0-63823C7B8A02}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{31136820-36C1-48A3-95F0-63823C7B8A02}.Debug|x64.Build.0 = Debug|Any CPU
+		{31136820-36C1-48A3-95F0-63823C7B8A02}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{31136820-36C1-48A3-95F0-63823C7B8A02}.Debug|x86.Build.0 = Debug|Any CPU
+		{31136820-36C1-48A3-95F0-63823C7B8A02}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{31136820-36C1-48A3-95F0-63823C7B8A02}.Release|Any CPU.Build.0 = Release|Any CPU
+		{31136820-36C1-48A3-95F0-63823C7B8A02}.Release|x64.ActiveCfg = Release|Any CPU
+		{31136820-36C1-48A3-95F0-63823C7B8A02}.Release|x64.Build.0 = Release|Any CPU
+		{31136820-36C1-48A3-95F0-63823C7B8A02}.Release|x86.ActiveCfg = Release|Any CPU
+		{31136820-36C1-48A3-95F0-63823C7B8A02}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -25,23 +25,21 @@ namespace Surreal
 
         public bool HasElementGreaterOrEqual(Surr target)
         {
+            // "exists -x ≥ target" ≡ "exists x ≤ -target" in Inner.
             var val = Surr.TryEvaluate(target);
             if (val.HasValue)
                 return Inner.HasElementLessOrEqual(Surr.Dyadic(-val.Value.Num, val.Value.Exp));
-            // Non-evaluable: check negated samples concretely
-            foreach (var s in SampleElements(5))
-                if (target <= s) return true;
-            return false;
+            // Non-evaluable target: negate via operator- and delegate.
+            return Inner.HasElementLessOrEqual(-target);
         }
 
         public bool HasElementLessOrEqual(Surr target)
         {
+            // "exists -x ≤ target" ≡ "exists x ≥ -target" in Inner.
             var val = Surr.TryEvaluate(target);
             if (val.HasValue)
                 return Inner.HasElementGreaterOrEqual(Surr.Dyadic(-val.Value.Num, val.Value.Exp));
-            foreach (var s in SampleElements(5))
-                if (s <= target) return true;
-            return false;
+            return Inner.HasElementGreaterOrEqual(-target);
         }
 
         public Surr[] SampleElements(int count)
@@ -53,7 +51,8 @@ namespace Surreal
                 var val = Surr.TryEvaluate(s);
                 if (val.HasValue)
                     result.Add(Surr.Dyadic(-val.Value.Num, val.Value.Exp));
-                // Skip non-evaluable samples to avoid recursion
+                else
+                    result.Add(-s); // Non-evaluable: negate structurally
             }
             return result.ToArray();
         }
@@ -358,6 +357,278 @@ namespace Surreal
         }
     }
 
+    /// <summary>The set {ε_0, ε_1, ε_2, …} — all finite-indexed epsilon numbers. Left set of ζ_0.</summary>
+    public sealed class EpsilonSeq : IInfiniteSet
+    {
+        public static readonly EpsilonSeq Instance = new();
+        public string DisplayName => "ε_0, ε_1, ε_2, ...";
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            // Doubling iteration: k = 1, 2, 4, …, 512 covers up to ε_512 in log steps.
+            if (target <= Surr.EpsilonNaught) return true;
+            for (int k = 1; k <= 512; k *= 2)
+                if (target <= Surr.Epsilon(k)) return true;
+            return false;
+        }
+        public bool HasElementLessOrEqual(Surr target) => Surr.EpsilonNaught <= target;
+        public Surr[] SampleElements(int count)
+        {
+            var arr = new Surr[count];
+            for (int i = 0; i < count; i++) arr[i] = Surr.Epsilon(i);
+            return arr;
+        }
+    }
+
+    /// <summary>The set {ζ_0, ζ_1, ζ_2, …} — all zeta numbers. Left set of Γ_0.</summary>
+    public sealed class ZetaSeq : IInfiniteSet
+    {
+        public static readonly ZetaSeq Instance = new();
+        public string DisplayName => "ζ_0, ζ_1, ζ_2, ...";
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            // Doubling iteration covers up to ζ_128 in log steps.
+            if (target <= Surr.Zeta0) return true;
+            for (int k = 1; k <= 128; k *= 2)
+                if (target <= Surr.Zeta(k)) return true;
+            return false;
+        }
+        public bool HasElementLessOrEqual(Surr target) => Surr.Zeta0 <= target;
+        public Surr[] SampleElements(int count)
+        {
+            var arr = new Surr[count];
+            for (int i = 0; i < count; i++) arr[i] = Surr.Zeta(i);
+            return arr;
+        }
+    }
+
+    /// <summary>Common stratified-ordinal sampling used by the α-parameterized below-sets. Yields representative β values
+    /// from integers through LVO, in increasing order, so callers can filter by `β &lt; α` to get valid left options.</summary>
+    internal static class OrdinalSamples
+    {
+        public static System.Collections.Generic.IEnumerable<Surr> Stratified()
+        {
+            // Finite integers
+            for (int k = 1; k <= 5; k++) yield return Surr.GetInt(k);
+            // ω and simple ω-powers
+            yield return Surr.Omega;
+            yield return Surr.OmegaSquared;
+            yield return Surr.OmegaToOmega;
+            // Epsilon tower (doubling indices)
+            yield return Surr.EpsilonNaught;
+            yield return Surr.Epsilon(1);
+            yield return Surr.Epsilon(2);
+            yield return Surr.Epsilon(4);
+            yield return Surr.Epsilon(8);
+            yield return Surr.Epsilon(16);
+            // Zeta tower
+            yield return Surr.Zeta0;
+            yield return Surr.Zeta(1);
+            yield return Surr.Zeta(4);
+            // Gamma tower
+            yield return Surr.Gamma0;
+            yield return Surr.Gamma(1);
+            yield return Surr.Gamma(4);
+            // SVO
+            yield return Surr.SmallVeblen();
+        }
+    }
+
+    /// <summary>{φ(β, 0, 0) : β &lt; α, β drawn from a stratified ordinal sample}. Used as left set of Veblen(α, 0, 0) for transfinite α so Veblen is monotonic across the ordinal hierarchy, not just among ε-indexed values.</summary>
+    public sealed class VeblenBelow : IInfiniteSet
+    {
+        private readonly Surr _alpha;
+        public VeblenBelow(Surr alpha) { _alpha = alpha; }
+        public string DisplayName => $"φ(β, 0, 0) for β < {_alpha}";
+
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            foreach (var beta in OrdinalSamples.Stratified())
+            {
+                if (!(beta < _alpha)) continue;
+                if (target <= Surr.Veblen(beta, 0, 0)) return true;
+            }
+            return false;
+        }
+
+        public bool HasElementLessOrEqual(Surr target)
+        {
+            return new Surr(1) < _alpha && Surr.SmallVeblen() <= target;
+        }
+
+        public Surr[] SampleElements(int count)
+        {
+            var result = new System.Collections.Generic.List<Surr>();
+            foreach (var beta in OrdinalSamples.Stratified())
+            {
+                if (result.Count >= count) break;
+                if (beta < _alpha) result.Add(Surr.Veblen(beta, 0, 0));
+            }
+            return result.ToArray();
+        }
+    }
+
+    /// <summary>{ε_β : β &lt; α, β drawn from stratified sample}. Left set of Epsilon(α) for transfinite α.</summary>
+    public sealed class EpsilonIndexedBelow : IInfiniteSet
+    {
+        private readonly Surr _alpha;
+        public EpsilonIndexedBelow(Surr alpha) { _alpha = alpha; }
+        public string DisplayName => $"ε_β for β < {_alpha}";
+
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            // All finite β are < any transfinite α; include ε_0 … ε_16 by doubling.
+            if (target <= Surr.EpsilonNaught) return true;
+            for (int k = 1; k <= 64; k *= 2)
+                if (target <= Surr.Epsilon(k)) return true;
+            // Transfinite β's strictly less than α
+            foreach (var beta in OrdinalSamples.Stratified())
+            {
+                if (!(beta < _alpha)) continue;
+                if (target <= Surr.Epsilon(beta)) return true;
+            }
+            return false;
+        }
+
+        public bool HasElementLessOrEqual(Surr target) => Surr.EpsilonNaught <= target;
+
+        public Surr[] SampleElements(int count)
+        {
+            var arr = new Surr[count];
+            for (int i = 0; i < count; i++) arr[i] = Surr.Epsilon(i);
+            return arr;
+        }
+    }
+
+    /// <summary>{Γ_β : β &lt; α, β drawn from stratified sample}. Left set of Gamma(α) for transfinite α.</summary>
+    public sealed class GammaIndexedBelow : IInfiniteSet
+    {
+        private readonly Surr _alpha;
+        public GammaIndexedBelow(Surr alpha) { _alpha = alpha; }
+        public string DisplayName => $"Γ_β for β < {_alpha}";
+
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            if (target <= Surr.Gamma0) return true;
+            for (int k = 1; k <= 32; k *= 2)
+                if (target <= Surr.Gamma(k)) return true;
+            foreach (var beta in OrdinalSamples.Stratified())
+            {
+                if (!(beta < _alpha)) continue;
+                if (target <= Surr.Gamma(beta)) return true;
+            }
+            return false;
+        }
+
+        public bool HasElementLessOrEqual(Surr target) => Surr.Gamma0 <= target;
+
+        public Surr[] SampleElements(int count)
+        {
+            var arr = new Surr[count];
+            for (int i = 0; i < count; i++) arr[i] = Surr.Gamma(i);
+            return arr;
+        }
+    }
+
+    /// <summary>{ψ(β) : β &lt; α, β drawn from stratified sample including ω_1}. Left set of Psi(α).
+    /// Makes Psi monotonic in α — larger α yields a Psi with more previous ψ values in its left set.</summary>
+    public sealed class PsiBelow : IInfiniteSet
+    {
+        private readonly Surr _alpha;
+        public PsiBelow(Surr alpha) { _alpha = alpha; }
+        public string DisplayName => $"ψ(β) for β < {_alpha}";
+
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            foreach (var beta in OrdinalSamples.Stratified())
+            {
+                if (!(beta < _alpha)) continue;
+                if (target <= Surr.Psi(beta)) return true;
+            }
+            // Also include zero as a base case if 0 < _alpha
+            if (Surr.Zero < _alpha && target <= Surr.Psi(Surr.Zero)) return true;
+            return false;
+        }
+
+        public bool HasElementLessOrEqual(Surr target)
+        {
+            return Surr.Zero < _alpha && Surr.Psi(Surr.Zero) <= target;
+        }
+
+        public Surr[] SampleElements(int count)
+        {
+            var result = new System.Collections.Generic.List<Surr>();
+            if (Surr.Zero < _alpha) result.Add(Surr.Psi(Surr.Zero));
+            foreach (var beta in OrdinalSamples.Stratified())
+            {
+                if (result.Count >= count) break;
+                if (beta < _alpha) result.Add(Surr.Psi(beta));
+            }
+            return result.ToArray();
+        }
+    }
+
+    /// <summary>The set {φ(k, 0, 0) : k = 1, 2, 3, …} plus φ(α, 0, 0) for various transfinite α.
+    /// Used as left set of the Large Veblen Ordinal = φ(1, 0, 0, 0).</summary>
+    public sealed class SmallVeblenSeq : IInfiniteSet
+    {
+        public static readonly SmallVeblenSeq Instance = new();
+        public string DisplayName => "φ(α, 0, 0) for α = 1, 2, …, Γ_0, SVO, …";
+
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            for (int k = 1; k <= 8; k++)
+                if (target <= Surr.Veblen(k, 0, 0)) return true;
+            if (target <= Surr.Veblen(Surr.Gamma0, 0, 0)) return true;
+            if (target <= Surr.Veblen(Surr.SmallVeblen(), 0, 0)) return true;
+            return false;
+        }
+
+        public bool HasElementLessOrEqual(Surr target) => Surr.SmallVeblen() <= target;
+
+        public Surr[] SampleElements(int count)
+        {
+            var arr = new Surr[count];
+            for (int i = 0; i < count; i++) arr[i] = Surr.Veblen(i + 1, 0, 0);
+            return arr;
+        }
+    }
+
+    /// <summary>The set of ALL countable ordinals — used as left set of ω_1 (the first uncountable ordinal).
+    /// Uses the Surr._isCountable trait flag to decide membership: any target marked countable is considered present.</summary>
+    public sealed class CountableOrdinals : IInfiniteSet
+    {
+        public static readonly CountableOrdinals Instance = new();
+        public string DisplayName => "(all countable ordinals)";
+        public bool HasElementGreaterOrEqual(Surr target) => target._isCountable;
+        public bool HasElementLessOrEqual(Surr target) => Surr.Zero <= target;
+        public Surr[] SampleElements(int count)
+        {
+            // Return a sample of representative countable ordinals.
+            return new[] { Surr.Zero, Surr.Omega, Surr.EpsilonNaught, Surr.Gamma0 };
+        }
+    }
+
+    /// <summary>The set {Γ_0, Γ_1, Γ_2, …}. Left set of the Small Veblen Ordinal.</summary>
+    public sealed class GammaSeq : IInfiniteSet
+    {
+        public static readonly GammaSeq Instance = new();
+        public string DisplayName => "Γ_0, Γ_1, Γ_2, ...";
+        public bool HasElementGreaterOrEqual(Surr target)
+        {
+            if (target <= Surr.Gamma0) return true;
+            for (int k = 1; k <= 64; k *= 2)
+                if (target <= Surr.Gamma(k)) return true;
+            return false;
+        }
+        public bool HasElementLessOrEqual(Surr target) => Surr.Gamma0 <= target;
+        public Surr[] SampleElements(int count)
+        {
+            var arr = new Surr[count];
+            for (int i = 0; i < count; i++) arr[i] = Surr.Gamma(i);
+            return arr;
+        }
+    }
+
     /// <summary>
     /// Lazy generator for dyadic approximations via binary search.
     /// The generating RULE is a predicate that decides, for each dyadic midpoint,
@@ -372,6 +643,12 @@ namespace Surreal
 
         /// <summary>For rational generators: the numerator and denominator. Null otherwise.</summary>
         public readonly long? P, Q;
+
+        /// <summary>For sqrt generators: n such that the target value is √n. Null otherwise.</summary>
+        public readonly long? SqrtOf;
+
+        /// <summary>For nth-root generators: (k, n) such that the target value is ⁿ√k. Null otherwise.</summary>
+        public readonly (long K, int N)? NthRootOf;
 
         /// <summary>Predicate: is midNum/2^exp below our target? Used during generation only.</summary>
         private readonly System.Func<long, int, bool> _isBelow;
@@ -394,12 +671,23 @@ namespace Surreal
             Upper.Add(Surr.GetInt(floor + 1));
         }
 
+        /// <summary>Sqrt constructor: target value is √n.</summary>
+        public LazyDyadicApprox(System.Func<long, int, bool> isBelow, long floor, long sqrtOf)
+            : this(isBelow, floor, $"sqrt:{sqrtOf}")
+        { SqrtOf = sqrtOf; }
+
+        /// <summary>Nth-root constructor: target value is ⁿ√k.</summary>
+        public LazyDyadicApprox(System.Func<long, int, bool> isBelow, long floor, long k, int n)
+            : this(isBelow, floor, $"nthroot:{n}:{k}")
+        { NthRootOf = (k, n); }
+
         /// <summary>Convenience constructor for rational p/q.</summary>
         public LazyDyadicApprox(long p, long q) : this(
             (midNum, exp) => p * (1L << exp) > midNum * q,
             FloorRat(p, q),
             $"rat:{p}/{q}")
         { P = p; Q = q; }
+
 
         private static long FloorRat(long p, long q)
         {
