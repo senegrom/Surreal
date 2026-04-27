@@ -683,7 +683,16 @@ namespace Surreal
 
         /// <summary>Convenience constructor for rational p/q.</summary>
         public LazyDyadicApprox(long p, long q) : this(
-            (midNum, exp) => p * (1L << exp) > midNum * q,
+            (midNum, exp) => {
+                // p·2^exp > midNum·q, with overflow guards. Predicate says "midNum·2^-exp < p/q".
+                if (exp >= 62) return p > 0;  // precision exhausted — favor consistent answer
+                long lhs = p << exp;
+                if (p != 0 && (lhs >> exp) != p) return p > 0; // lhs overflow
+                long absMid = System.Math.Abs(midNum);
+                long absQ = System.Math.Abs(q);
+                if (absMid != 0 && absQ != 0 && absMid > long.MaxValue / absQ) return p > 0; // midNum·q overflow
+                return lhs > midNum * q;
+            },
             FloorRat(p, q),
             $"rat:{p}/{q}")
         { P = p; Q = q; }
@@ -700,14 +709,24 @@ namespace Surreal
         /// <summary>Whether two generators converge to the same value.</summary>
         public bool SameRule(LazyDyadicApprox other) => Tag == other.Tag;
 
+        /// <summary>Max bit-depth before GenerateNext is a no-op — keeps midNum² safely within long range
+        /// (midNum < 2^30 ⇒ midNum² < 2^60). Far more precision than any realistic comparison needs.</summary>
+        private const int MaxDepth = 30;
+        /// <summary>True once GenerateNext has been capped by MaxDepth — callers can detect stalling.</summary>
+        public bool AtMaxDepth => _exp >= MaxDepth;
+
         public void EnsureDepth(int totalElements)
         {
             while (Lower.Count + Upper.Count < totalElements + 2)
+            {
+                if (AtMaxDepth) return;
                 GenerateNext();
+            }
         }
 
         public void GenerateNext()
         {
+            if (AtMaxDepth) return;
             _exp++;
             _loNum *= 2;
             _hiNum *= 2;
@@ -741,6 +760,9 @@ namespace Surreal
 
                 if (Upper[^1] <= other.Lower[^1]) return -1;
                 if (other.Upper[^1] <= Lower[^1]) return 1;
+                // Both generators stalled at max depth without distinguishing — the values
+                // agree to ~60 bits. Treat as equal; caller must have pre-checked SameRule.
+                if (AtMaxDepth && other.AtMaxDepth) return 0;
             }
         }
     }
@@ -806,7 +828,10 @@ namespace Surreal
         public Surr[] SampleElements(int count)
         {
             Gen.EnsureDepth(count);
-            return Gen.Lower.ToArray();
+            int take = System.Math.Min(count, Gen.Lower.Count);
+            var arr = new Surr[take];
+            for (int i = 0; i < take; i++) arr[i] = Gen.Lower[i];
+            return arr;
         }
     }
 
@@ -832,7 +857,10 @@ namespace Surreal
         public Surr[] SampleElements(int count)
         {
             Gen.EnsureDepth(count);
-            return Gen.Upper.ToArray();
+            int take = System.Math.Min(count, Gen.Upper.Count);
+            var arr = new Surr[take];
+            for (int i = 0; i < take; i++) arr[i] = Gen.Upper[i];
+            return arr;
         }
 
         public bool HasElementLessOrEqual(Surr target)

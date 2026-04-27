@@ -56,7 +56,15 @@ namespace Surreal
             if ((root + 1) * (root + 1) == n) { var r = new Surr(root + 1); _fromSqrtCache[n] = r; return r; }
 
             var gen = new LazyDyadicApprox(
-                (midNum, exp) => midNum * midNum < n * (1L << (2 * exp)),
+                (midNum, exp) => {
+                    // midNum² < n·2^(2·exp), with overflow guards.
+                    if (2 * exp >= 62) return true;   // 1L<<(2·exp) would overflow
+                    long absMid = System.Math.Abs(midNum);
+                    if (absMid != 0 && absMid > long.MaxValue / absMid) return true; // midNum² overflow
+                    long rhs = n << (2 * exp);
+                    if (rhs < 0) return true;         // n·2^(2·exp) overflow
+                    return midNum * midNum < rhs;
+                },
                 root,
                 (long)n);
 

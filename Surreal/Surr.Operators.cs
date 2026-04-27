@@ -557,8 +557,13 @@ namespace Surreal
                 var inv = FromPredicate(
                     (midNum, exp) =>
                     {
-                        if (2 * exp >= 63) return true;
-                        return midNum * midNum * sn < (1L << (2 * exp));
+                        // midNum²·sn < 2^(2·exp), with overflow guards.
+                        if (2 * exp >= 62) return true;
+                        long absMid = System.Math.Abs(midNum);
+                        if (absMid != 0 && absMid > long.MaxValue / absMid) return true;
+                        long midSq = midNum * midNum;
+                        if (sn != 0 && midSq > long.MaxValue / sn) return true;
+                        return midSq * sn < (1L << (2 * exp));
                     },
                     0,
                     $"1/√{sn}");
@@ -690,11 +695,19 @@ namespace Surreal
                 }
                 // k/√n: build a tagged surreal so that (k/√n)² = k²/n and (k/√n)·√n = k.
                 long absK = System.Math.Abs(k);
+                long kSqVal = absK * absK;
                 var res = FromPredicate(
                     (midNum, exp) =>
                     {
-                        if (2 * exp >= 63) return true;
-                        return midNum * midNum * sqM < absK * absK * (1L << (2 * exp));
+                        // midNum²·sqM < k²·2^(2·exp), with overflow guards.
+                        if (2 * exp >= 62) return true;
+                        long absMid = System.Math.Abs(midNum);
+                        if (absMid != 0 && absMid > long.MaxValue / absMid) return true;
+                        long midSq = midNum * midNum;
+                        if (sqM != 0 && midSq > long.MaxValue / sqM) return true;
+                        long shift = 1L << (2 * exp);
+                        if (kSqVal != 0 && shift > long.MaxValue / kSqVal) return true;
+                        return midSq * sqM < kSqVal * shift;
                     },
                     0,
                     $"{k}/√{sqM}");
