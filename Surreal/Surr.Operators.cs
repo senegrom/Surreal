@@ -431,6 +431,16 @@ namespace Surreal
         {
             if (b.IsZero) throw new System.DivideByZeroException("Division by surreal zero");
             if (a.IsZero) return Zero;
+            // Reject division by genuine games (* = {0|0}, etc). Surreals tagged with _symbolicTerms
+            // are by construction numeric sums — skip the IsNumeric check for those, since their
+            // raw left/right options can include sampled infinite-set elements that look non-numeric.
+            if (b._symbolicTerms is null && !b.IsNumeric)
+                throw new System.InvalidOperationException(
+                    $"Division by non-numeric game ({b}) is undefined in surreal arithmetic. " +
+                    "Use NimMultiply for nimber-field arithmetic.");
+            if (a._symbolicTerms is null && !a.IsNumeric)
+                throw new System.InvalidOperationException(
+                    $"Division of non-numeric game ({a}) is undefined in surreal arithmetic.");
 
             // Known quotient patterns (fast paths for common cases)
             var known = TryKnownQuotient(a, b);
@@ -506,29 +516,33 @@ namespace Surreal
         public static Surr operator /(long a, Surr b) => new Surr(a) / b;
 
         /// <summary>
-        /// Multiplicative inverse 1/y for non-zero y. Handles evaluable dyadics, rational/sqrt/nth-root
-        /// generators, and named transfinite constants (ω, ε₀, Γ₀). Throws for truly unsupported cases
-        /// like y = ω+1 (inverses requiring Conway's infinite iteration).
+        /// Multiplicative inverse 1/y for non-zero numeric y. Fast paths for dyadics, rationals,
+        /// sqrt/nth-root generators, and named transfinites (ω, ε₀, Γ₀); falls back to Conway's
+        /// iterative formula for general transfinites (ω+1, 2ω, ε₀+ω, etc).
         /// </summary>
         private static readonly Dictionary<Surr, Surr> _inverseCache = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+
+        /// <summary>Tag inv with _invOf=y (enables x·(1/x)=1 cancellation), cache, and return.</summary>
+        private static Surr CacheInverse(Surr y, Surr inv)
+        {
+            inv._invOf = y;
+            _inverseCache[y] = inv;
+            return inv;
+        }
+
         public static Surr Inverse(Surr y)
         {
             if (y.IsZero) throw new System.DivideByZeroException("Inverse of zero");
+            if (y._symbolicTerms is null && !y.IsNumeric)
+                throw new System.InvalidOperationException(
+                    $"Inverse of non-numeric game ({y}) is undefined in surreal arithmetic.");
             if (_inverseCache.TryGetValue(y, out var cached)) return cached;
             // Unwrap symbolic negation first (avoids Conway comparison on y<0, which can give wrong
             // answers for structurally-swapped negatives like -√3).
             if (y._symbolicTerms is { Count: 1 } neg && neg[0].negate)
-            {
-                var inv = -Inverse(neg[0].factor);
-                _inverseCache[y] = inv;
-                return inv;
-            }
+                return CacheInverse(y, -Inverse(neg[0].factor));
             if (y < 0)
-            {
-                var inv = -Inverse(-y);
-                _inverseCache[y] = inv;
-                return inv;
-            }
+                return CacheInverse(y, -Inverse(-y));
             // y > 0 from here.
 
             // Evaluable dyadic y: 1/y = den/num.
@@ -538,19 +552,14 @@ namespace Surreal
                 if (yVal.Value.Num == 1 && yVal.Value.Exp == 0) return GetInt(1);
                 long num = yVal.Value.Num;
                 long den = 1L << yVal.Value.Exp;
-                var inv = FromRational(den, num);
-                _inverseCache[y] = inv;
-                return inv;
+                return CacheInverse(y, FromRational(den, num));
             }
 
             // Generator-based: rational p/q, sqrt n, nth-root (k, n).
             var yGen = GeneratorHelper.GetGenerator(y);
             if (yGen?.P != null && yGen?.Q != null)
-            {
-                var inv = FromRational(yGen.Q.Value, yGen.P.Value);
-                _inverseCache[y] = inv;
-                return inv;
-            }
+                return CacheInverse(y, FromRational(yGen.Q.Value, yGen.P.Value));
+
             if (yGen?.SqrtOf is long sn)
             {
                 // 1/√n via Dedekind cut, tagged _sqrtOf = 1/n so (1/√n)² = 1/n.
@@ -568,12 +577,11 @@ namespace Surreal
                     0,
                     $"1/√{sn}");
                 inv._sqrtOf = FromRational(1, sn);
-                _inverseCache[y] = inv;
-                return inv;
+                return CacheInverse(y, inv);
             }
             if (yGen?.NthRootOf is (long k, int n))
             {
-                // 1/ⁿ√k via Dedekind cut, tagged _nthRoot equivalent for n² identity.
+                // 1/ⁿ√k via Dedekind cut.
                 var inv = FromPredicate(
                     (midNum, exp) =>
                     {
@@ -589,22 +597,105 @@ namespace Surreal
                     },
                     0,
                     $"1/{n}√{k}");
-                _inverseCache[y] = inv;
-                return inv;
+                return CacheInverse(y, inv);
             }
 
             // Named transfinite constants
-            if (ReferenceEquals(y, Omega)) return InverseOmega;
-            if (ReferenceEquals(y, EpsilonNaught)) return InverseEpsilon0;
-            if (ReferenceEquals(y, Gamma0)) return InverseGamma0;
-            if (ReferenceEquals(y, SqrtOmega)) return FromSqrt(1) / SqrtOmega; // unreachable; handled above
+            if (ReferenceEquals(y, Omega)) return CacheInverse(y, InverseOmega);
+            if (ReferenceEquals(y, EpsilonNaught)) return CacheInverse(y, InverseEpsilon0);
+            if (ReferenceEquals(y, Gamma0)) return CacheInverse(y, InverseGamma0);
 
             // Sqrt-tagged transfinite (e.g. √Γ_0): 1/√x via Sqrt of Inverse(x).
             if (y._sqrtOf is Surr sqrtOfVal)
-                return Sqrt(Inverse(sqrtOfVal));
+                return CacheInverse(y, Sqrt(Inverse(sqrtOfVal)));
 
-            throw new System.NotImplementedException(
-                $"Inverse not yet implemented for {y} (requires Conway's iterative inversion)");
+            // General fallback: Conway's iterative formula. Handles ω+1, 2ω, ε₀+ω, etc.
+            return CacheInverse(y, ComputeConwayInverse(y));
+        }
+
+        /// <summary>Recursion guard: nested ComputeConwayInverse calls (e.g. 2ω needs 1/(ω+k) for various k).</summary>
+        [System.ThreadStatic] private static int _conwayInvDepth;
+        private const int MaxConwayInvDepth = 6;
+        /// <summary>Expansion rounds in Conway's iterative inverse. One round suffices to bracket 1/y
+        /// in a useful cut: L always contains 0, and R contains 1/y' for each positive y'∈y.L. The
+        /// _invOf tag handles the multiplicative cancellation identity directly. More rounds produce
+        /// tighter cuts but explode the option count combinatorially.</summary>
+        private const int ConwayInvIterations = 1;
+
+        /// <summary>
+        /// Conway's iterative inverse for y > 0 numeric.
+        ///   1/y = { 0, (1+(y_R-y)·z_L)/y_R, (1+(y_L-y)·z_R)/y_L
+        ///         | (1+(y_L-y)·z_L)/y_L, (1+(y_R-y)·z_R)/y_R }
+        /// where y_L ranges over POSITIVE left options of y, y_R ranges over right options,
+        /// and z_L, z_R are previously-computed left/right options of 1/y. Bootstrap with
+        /// 1/y = {0|}, then expand for ConwayInvIterations rounds.
+        /// </summary>
+        private static Surr ComputeConwayInverse(Surr y)
+        {
+            if (_conwayInvDepth >= MaxConwayInvDepth)
+                throw new System.NotImplementedException(
+                    $"Inverse recursion limit ({MaxConwayInvDepth}) exceeded for {y}");
+            _conwayInvDepth++;
+            try
+            {
+                var posYL = new System.Collections.Generic.List<Surr>();
+                foreach (var l in Safe(y.left)) if (l > Zero) posYL.Add(l);
+                if (y.leftInf != null)
+                    foreach (var el in y.leftInf.SampleElements(3))
+                        if (el > Zero) posYL.Add(el);
+                var YR = new System.Collections.Generic.List<Surr>();
+                foreach (var r in Safe(y.right)) YR.Add(r);
+                if (y.rightInf != null)
+                    foreach (var el in y.rightInf.SampleElements(3)) YR.Add(el);
+
+                if (posYL.Count == 0 && YR.Count == 0)
+                    throw new System.NotImplementedException(
+                        $"Cannot invert {y}: no positive left or right options to seed Conway's formula.");
+
+                var leftOpts = new System.Collections.Generic.List<Surr> { Zero };
+                var rightOpts = new System.Collections.Generic.List<Surr>();
+
+                Surr one = GetInt(1);
+
+                for (int iter = 0; iter < ConwayInvIterations; iter++)
+                {
+                    var L = new System.Collections.Generic.List<Surr>(leftOpts);
+                    var R = new System.Collections.Generic.List<Surr>(rightOpts);
+
+                    // For each (yp, zp), candidate = (1 + (yp - y) · zp) / yp.
+                    // Routing: yp positive (y_L), zp from L → R; from R → L.
+                    //          yp from y_R (yp > y), zp from L → L; from R → R.
+                    void process(Surr yp, Surr zp, bool ypIsPositiveYL, bool zpFromLeft)
+                    {
+                        Surr cand;
+                        try
+                        {
+                            cand = (one + (yp - y) * zp) / yp;
+                        }
+                        catch (System.NotImplementedException) { return; }
+                        catch (System.InvalidOperationException) { return; }
+                        bool toLeft = ypIsPositiveYL ? !zpFromLeft : zpFromLeft;
+                        var dest = toLeft ? leftOpts : rightOpts;
+                        dest.Add(cand);
+                    }
+
+                    foreach (var yp in posYL)
+                    {
+                        foreach (var zL in L) process(yp, zL, true, true);
+                        foreach (var zR in R) process(yp, zR, true, false);
+                    }
+                    foreach (var yp in YR)
+                    {
+                        foreach (var zL in L) process(yp, zL, false, true);
+                        foreach (var zR in R) process(yp, zR, false, false);
+                    }
+                }
+
+                var result = new Surr(leftOpts, rightOpts);
+                result._displayName = $"1/({y})";
+                return result;
+            }
+            finally { _conwayInvDepth--; }
         }
 
         private static Surr TryKnownQuotient(Surr a, Surr b)
@@ -755,6 +846,10 @@ namespace Surreal
             // Sqrt(x) * Sqrt(x) = x via _sqrtOf tag
             if (a._sqrtOf is not null && b._sqrtOf is not null && ReferenceEquals(a._sqrtOf, b._sqrtOf))
                 return a._sqrtOf;
+
+            // Inverse cancellation: x · (1/x) = 1, by tag.
+            if (a._invOf is not null && ReferenceEquals(a._invOf, b)) return GetInt(1);
+            if (b._invOf is not null && ReferenceEquals(b._invOf, a)) return GetInt(1);
 
             var aGen = GeneratorHelper.GetGenerator(a);
             var bGen = GeneratorHelper.GetGenerator(b);

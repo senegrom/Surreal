@@ -247,5 +247,69 @@ namespace Surreal.Tests
             Assert.True(Surr.FromRational(7, 3) * Surr.Inverse(Surr.FromRational(7, 3)) == 1);
             Assert.True(Surr.FromSqrt(2) * Surr.Inverse(Surr.FromSqrt(2)) == 1);
         }
+
+        // General Conway iterative inverse (formerly threw NotImplementedException).
+        [Fact]
+        public void Inverse_OmegaPlusOne_Is_Positive_Infinitesimal()
+        {
+            // 1/(ω+1) should be > 0 and smaller than every positive real.
+            var inv = Surr.Inverse(Surr.Omega + 1);
+            Assert.True(inv > Surr.Zero);
+            Assert.True(inv < Surr.FromRational(1, 1_000_000));
+        }
+
+        [Fact]
+        public void Inverse_OmegaPlusOne_Less_Than_Inverse_Omega()
+        {
+            // ω+1 > ω ⇒ 1/(ω+1) < 1/ω.
+            Assert.True(Surr.Inverse(Surr.Omega + 1) < Surr.InverseOmega);
+        }
+
+        [Fact]
+        public void OmegaPlusOne_Times_Inverse_Equals_One()
+        {
+            // (ω+1) · 1/(ω+1) = 1, via _invOf cancellation tag.
+            var y = Surr.Omega + 1;
+            Assert.True(y * Surr.Inverse(y) == 1);
+        }
+
+        [Fact]
+        public void Inverse_TwoOmega_Less_Than_Inverse_Omega()
+        {
+            // 2ω > ω ⇒ 1/(2ω) < 1/ω.
+            Assert.True(Surr.Inverse(Surr.Omega + Surr.Omega) < Surr.InverseOmega);
+        }
+
+        [Fact]
+        public void TwoOmega_Times_Inverse_Equals_One()
+        {
+            var y = Surr.Omega + Surr.Omega;
+            Assert.True(y * Surr.Inverse(y) == 1);
+        }
+
+        // Non-numeric error path.
+        [Fact]
+        public void Division_By_Star_Throws()
+        {
+            Assert.Throws<System.InvalidOperationException>(() => new Surr(1) / Surr.Star);
+        }
+
+        [Fact]
+        public void Division_Of_Star_Throws()
+        {
+            Assert.Throws<System.InvalidOperationException>(() => Surr.Star / new Surr(1));
+        }
+
+        [Fact]
+        public void Inverse_Of_Star_Throws()
+        {
+            Assert.Throws<System.InvalidOperationException>(() => Surr.Inverse(Surr.Star));
+        }
+
+        [Fact]
+        public void Omega_Divided_By_Star_Throws()
+        {
+            Assert.Throws<System.InvalidOperationException>(() => Surr.Omega / Surr.Star);
+        }
     }
 }

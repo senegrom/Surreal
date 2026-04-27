@@ -21,6 +21,8 @@ namespace Surreal
         internal Surr _expOf;
         /// <summary>If this surreal was produced by Log(x), this holds x. Enables Exp(Log(x)) = x.</summary>
         internal Surr _logOf;
+        /// <summary>If this surreal is the multiplicative inverse 1/x, this holds x. Enables x · (1/x) = 1.</summary>
+        internal Surr _invOf;
 
         /// <summary>Trait flag: this surreal is a countable ordinal (or derived from countable operations).
         /// Defaults to true; only explicitly-uncountable surreals (like ω_1) set it false.
